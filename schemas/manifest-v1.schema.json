@@ -14,7 +14,7 @@
     },
     "metadata_schema_version": {
       "type": "string",
-      "pattern": "^1\\.1$"
+      "pattern": "^1\\.(1|2)$"
     },
     "members": {
       "type": "array",

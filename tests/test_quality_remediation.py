@@ -6,8 +6,10 @@ import unittest
 import zipfile
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from app.artifacts.package import build_package
+from app.parsers.base import ParsedAsset
 from app.parsers.docling_adapter import DoclingAdapter
 from app.schemas.models import (
     BoundingBox,
@@ -49,6 +51,23 @@ class QualityRemediationTests(unittest.TestCase):
         page = make_page()
         DoclingAdapter._apply_empty_page_fallback([page], [""])
         self.assertIn("BODY_TEXT_SOURCE_LAYER_EMPTY", page.warnings)
+
+    def test_fallback_removes_text_already_emitted_as_a_typed_element(self) -> None:
+        page = make_page()
+        page.elements.append(Element(
+            element_id="p0001-heading", type=ExtractionField.HEADING,
+            text="Important Heading", reading_order=0,
+        ))
+
+        DoclingAdapter._apply_empty_page_fallback(
+            [page], ["Important\nHeading\nRemaining body text"]
+        )
+
+        fallback = next(element for element in page.elements
+                        if element.attributes.get("source") == "pypdf_fallback")
+        self.assertEqual(fallback.text, "Remaining body text")
+        self.assertEqual(fallback.attributes["overlap_removed_char_count"], len("Important Heading"))
+        self.assertIn("BODY_TEXT_FALLBACK_OVERLAP_REMOVED", page.warnings)
 
     def test_doc11_reported_empty_body_pages_get_source_text_fallback(self) -> None:
         from pypdf import PdfReader
@@ -101,6 +120,33 @@ class QualityRemediationTests(unittest.TestCase):
         self.assertTrue(all(page.elements[0].text == "Regulatory Directions" for page in pages))
         self.assertTrue(all(page.elements[0].confidence == 0.8 for page in pages))
 
+    def test_repeating_pdf_edge_text_is_added_but_one_off_title_is_not(self) -> None:
+        class FakePage:
+            mediabox = SimpleNamespace(height=792, width=612)
+
+            def __init__(self, label: str):
+                self.label = label
+
+            def extract_text(self, visitor_text):
+                visitor_text(self.label, [1, 0, 0, 1, 72, 740],
+                             [1, 0, 0, 1, 0, 0], None, 12)
+
+        class FakeReader:
+            def __init__(self, *_args, **_kwargs):
+                self.pages = [FakePage("Running Header"), FakePage("Running Header"),
+                              FakePage("Unique section title")]
+
+        pages = [make_page(index) for index in range(1, 4)]
+        with patch("pypdf.PdfReader", FakeReader):
+            DoclingAdapter._append_repeated_pdf_edge_furniture("unused.pdf", pages)
+
+        self.assertTrue(all(any(element.type == ExtractionField.HEADER
+                                 and element.text == "Running Header"
+                                 for element in page.elements) for page in pages[:2]))
+        self.assertFalse(any(element.type == ExtractionField.HEADER
+                             and element.text == "Unique section title"
+                             for element in pages[2].elements))
+
     def test_printed_page_labels_are_separate_from_physical_indices(self) -> None:
         fixture = Path(__file__).parents[1] / "docs" / "PDF_Layout_Metadata_Test_Fixture.pdf"
         from pypdf import PdfReader
@@ -134,6 +180,8 @@ class QualityRemediationTests(unittest.TestCase):
         self.assertEqual(element.attributes["table_status"], "structured")
         self.assertEqual(element.attributes["table_cells"][0]["text"], "Threshold")
         self.assertEqual(element.attributes["table_validation_status"], "needs_review")
+        self.assertEqual(element.attributes["table_metrics"]["row_count"], 1)
+        self.assertEqual(element.attributes["table_metrics"]["column_count"], 1)
 
     def test_table_without_cells_is_marked_visual_only(self) -> None:
         table = SimpleNamespace(data=SimpleNamespace(table_cells=[]))
@@ -168,7 +216,7 @@ class QualityRemediationTests(unittest.TestCase):
                 self.assertIn("manifest.json", names)
                 self.assertFalse(any(name.endswith(".html") for name in names))
                 manifest = json.loads(archive.read("manifest.json"))
-                self.assertEqual(manifest["metadata_schema_version"], "1.1")
+                self.assertEqual(manifest["metadata_schema_version"], "1.2")
                 self.assertEqual({item["path"] for item in manifest["members"]},
                                  names - {"manifest.json"})
                 self.assertIsNone(json.loads(archive.read("metadata.json"))
@@ -196,6 +244,61 @@ class QualityRemediationTests(unittest.TestCase):
             )
             with self.assertRaisesRegex(ValueError, "missing package artifacts"):
                 build_package(metadata, output, source)
+
+    def test_package_deduplicates_identical_image_bytes_but_keeps_occurrences(self) -> None:
+        from io import BytesIO
+        from PIL import Image
+
+        stream = BytesIO()
+        Image.new("RGB", (2, 2), color="white").save(stream, format="PNG")
+        png = stream.getvalue()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "source.pdf"
+            source.write_bytes(b"%PDF-test source bytes")
+            output = root / "sample.zip"
+            first, second = make_page(1), make_page(2)
+            first.elements.append(Element(element_id="image-one", type=ExtractionField.IMAGE,
+                                          reading_order=0))
+            second.elements.append(Element(element_id="image-two", type=ExtractionField.IMAGE,
+                                           reading_order=0))
+            metadata = Metadata(
+                document=DocumentInfo(source_filename="sample.pdf", source_sha256="a" * 64,
+                                      page_count=2),
+                processing=ProcessingInfo(parser_name="docling", parser_version="test",
+                                          requested_fields=[ExtractionField.IMAGE],
+                                          extracted_fields=[ExtractionField.IMAGE]),
+                pages=[first, second],
+            )
+            assets = [
+                ParsedAsset("image-one", 1, ExtractionField.IMAGE, png),
+                ParsedAsset("image-two", 2, ExtractionField.IMAGE, png),
+            ]
+
+            build_package(metadata, output, source, assets)
+
+            self.assertEqual(first.elements[0].artifact_path, second.elements[0].artifact_path)
+            with zipfile.ZipFile(output) as archive:
+                image_paths = [name for name in archive.namelist()
+                               if name.startswith("images/") and name.endswith(".png")]
+                self.assertEqual(len(image_paths), 1)
+
+    def test_body_text_assembly_removes_exact_duplicate_elements(self) -> None:
+        from app.main import _assemble_body_text
+
+        page = make_page()
+        page.elements.extend([
+            Element(element_id="first", type=ExtractionField.BODY_TEXT,
+                    text="Repeated paragraph", reading_order=0),
+            Element(element_id="duplicate", type=ExtractionField.BODY_TEXT,
+                    text="  repeated   paragraph ", reading_order=1),
+            Element(element_id="next", type=ExtractionField.BODY_TEXT,
+                    text="Next paragraph", reading_order=2),
+        ])
+
+        self.assertEqual(_assemble_body_text(page), "Repeated paragraph\nNext paragraph")
+        self.assertEqual(page.duplicate_text_char_count, len("  repeated   paragraph "))
+        self.assertIn("BODY_TEXT_EXACT_DUPLICATE_REMOVED", page.warnings)
 
 
 if __name__ == "__main__":

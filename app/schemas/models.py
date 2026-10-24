@@ -26,6 +26,9 @@ class ExtractionField(StrEnum):
 
 class FieldExtractionStatus(StrEnum):
     EXTRACTED = "extracted"
+    EXTRACTED_UNVALIDATED = "extracted_unvalidated"
+    VALIDATED = "validated"
+    NEEDS_REVIEW = "needs_review"
     NOT_DETECTED = "not_detected"
     NOT_REQUESTED = "not_requested"
     FAILED = "failed"
@@ -70,6 +73,7 @@ class Page(BaseModel):
     printed_page_label: str | None = None
     source_text_char_count: int = Field(default=0, ge=0)
     body_text_char_count: int = Field(default=0, ge=0)
+    duplicate_text_char_count: int = Field(default=0, ge=0)
     body_text_to_source_text_ratio: float | None = Field(default=None, ge=0)
     field_status: dict[str, FieldExtractionStatus] = Field(default_factory=dict)
     warnings: list[str] = Field(default_factory=list)
@@ -87,13 +91,19 @@ class DocumentInfo(BaseModel):
 class ProcessingInfo(BaseModel):
     parser_name: str
     parser_version: str
-    adapter_version: str = "0.2.0"
+    adapter_version: str = "0.3.0"
+    run_id: str | None = None
+    processed_at_utc: str | None = None
+    build_id: str | None = None
+    configuration: dict[str, Any] = Field(default_factory=dict)
+    dependency_versions: dict[str, str] = Field(default_factory=dict)
     model_version: str | None = None
     status: str = "success"
     requested_fields: list[ExtractionField]
     extracted_fields: list[ExtractionField]
     missing_fields: list[ExtractionField] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
+    warning_summary: dict[str, int] = Field(default_factory=dict)
     errors: list[str] = Field(default_factory=list)
 
 
@@ -106,7 +116,7 @@ class ArtifactInfo(BaseModel):
 
 
 class Metadata(BaseModel):
-    schema_version: str = "1.1"
+    schema_version: str = "1.2"
     document: DocumentInfo
     processing: ProcessingInfo
     pages: list[Page]

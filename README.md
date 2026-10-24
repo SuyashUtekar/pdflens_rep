@@ -12,7 +12,11 @@ Feasibility implementation for a PDF extraction service that produces page-orien
 - Table cell structures when Docling exposes them; otherwise table snapshots are labeled `visual_only`. Repeated identical image snapshots are flagged without removing page-specific files.
 - Output ZIP: the original PDF, `document.docx`, `metadata.json`, `manifest.json`, plus detected crops under `images/` and `tables/` when requested and available. The DOCX is built from an in-memory structured HTML representation that preserves headings, reading order, page boundaries, links, and asset references; no HTML file is written to disk or included in the ZIP.
 - DOCX is an editable text reconstruction. Image and table snapshots are separate PNG artifacts linked from their canonical metadata elements.
-- `/healthz` liveness endpoint.
+- `/healthz` liveness and `/readyz` parser-package readiness endpoints. Readiness does not warm models.
+- Reused Docling pipelines, serialized model inference, and aggregate quality warnings with page counts to identify without flooding logs.
+- Metadata schema 1.2 records run/build identity, UTC processing time, extraction configuration, runtime dependency versions, warning counts, per-page review states, and checksums.
+- Fallback text removes exact spans already emitted as typed elements; repeated body blocks are removed and counted. Uncertain footnote candidates stay in body text.
+- Repeated identical image/table bytes are packaged once while each occurrence keeps its page element and bounding box. Generated PNG and DOCX structure are checked before ZIP creation.
 
 The endpoint and archive names are provisional until compared with sanitized PDFLens requests, responses, and ZIPs. It has no authentication, durable job state, object storage, OCR language policy, or production worker isolation. Do not expose it to untrusted networks. Docling must be configured to produce page images for table crops; output paths and cropping need validation against a reviewed corpus.
 
@@ -39,7 +43,7 @@ curl -f -X POST http://127.0.0.1:8000/v1/extract \
 
 Docling can require large model downloads and platform-specific dependencies. Pin a tested version and pre-stage approved models before deployment; this initial setup does not lock model artifacts. The default adapter currently emits a warning that parser and coordinate mappings require corpus verification.
 
-Running headers and footers are collected by recursively resolving references in Docling’s furniture tree, then checking `doc.texts` for explicit `page_header` and `page_footer` labels. Results are deduplicated by reference, label, text, and provenance. No position-based or repeated-text inference is used for headers or footers. Explicit Docling heading labels remain headings. Footnotes use parser labels or marker patterns, while page numbers are extracted separately from PDF text spans. Hyperlinks come from PDF link annotations; visible link text is matched to overlapping PDF characters when available.
+Running headers and footers are collected from Docling’s furniture tree and explicit page-furniture labels. Repeated, position-matched PDF text supplements that signal only when it recurs across a configurable share of pages; one-off page titles are not promoted. Explicit Docling heading labels remain headings. Low-confidence footnote candidates are also retained in body text. Page labels are separate from physical indices; hyperlink targets come from PDF annotations and adjacent visible character fragments are joined using geometry.
 
 ## Configuration
 
@@ -47,6 +51,10 @@ Running headers and footers are collected by recursively resolving references in
 |---|---:|---|
 | `PDFLENS_MAX_UPLOAD_BYTES` | 52428800 | Maximum uploaded PDF size |
 | `PDFLENS_MAX_PAGES` | 500 | Maximum parsed page count |
+| `PDFLENS_FURNITURE_ZONE_FRACTION` | 0.12 | Page-edge zone used when assessing repeating headers and footers |
+| `PDFLENS_FURNITURE_REPEAT_FRACTION` | 0.10 | Minimum fraction of pages on which edge text must repeat to classify as running furniture (at least two pages) |
+| `PDFLENS_FOOTNOTE_ZONE_START` | 0.78 | Lower-page boundary used as one footnote-classification signal |
+| `PDFLENS_BUILD_ID` | adapter build ID | Override for identifying the exact service build in metadata |
 | `LOG_LEVEL` | `INFO` | Application log level |
 
 ## Repository map

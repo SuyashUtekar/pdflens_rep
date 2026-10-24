@@ -3,10 +3,22 @@ from __future__ import annotations
 from importlib.util import find_spec
 from importlib.metadata import PackageNotFoundError, version
 from io import BytesIO
+import math
+import os
 import re
 
 from app.parsers.base import ParsedAsset, ParsedDocument
 from app.schemas.models import BoundingBox, Element, ExtractionField, Page
+
+FURNITURE_ZONE_FRACTION = float(os.getenv("PDFLENS_FURNITURE_ZONE_FRACTION", "0.12"))
+FURNITURE_REPEAT_FRACTION = float(os.getenv("PDFLENS_FURNITURE_REPEAT_FRACTION", "0.10"))
+FOOTNOTE_ZONE_START = float(os.getenv("PDFLENS_FOOTNOTE_ZONE_START", "0.78"))
+if not 0 < FURNITURE_ZONE_FRACTION < 0.5:
+    raise RuntimeError("PDFLENS_FURNITURE_ZONE_FRACTION must be between 0 and 0.5")
+if not 0 < FURNITURE_REPEAT_FRACTION <= 1:
+    raise RuntimeError("PDFLENS_FURNITURE_REPEAT_FRACTION must be in (0, 1]")
+if not 0 < FOOTNOTE_ZONE_START < 1:
+    raise RuntimeError("PDFLENS_FOOTNOTE_ZONE_START must be between 0 and 1")
 
 
 class ParserUnavailableError(RuntimeError):
@@ -144,6 +156,16 @@ class DoclingAdapter:
                     if heading_level is not None:
                         element.attributes["heading_level"] = heading_level
                 elements.append(element)
+                if (kind == ExtractionField.FOOTNOTE and element.confidence is not None
+                        and element.confidence < 0.7
+                        and ExtractionField.BODY_TEXT in requested and element.text):
+                    elements.append(Element(
+                        element_id=f"{element_id}-body-candidate",
+                        type=ExtractionField.BODY_TEXT, text=element.text,
+                        reading_order=order, bbox=bbox, confidence=element.confidence,
+                        attributes={"source": "uncertain_footnote_candidate",
+                                    "preserved_in_body_text": True},
+                    ))
                 if kind in {ExtractionField.IMAGE, ExtractionField.TABLE}:
                     try:
                         image_getter = getattr(obj, "get_image", None)
@@ -160,13 +182,16 @@ class DoclingAdapter:
                         asset_warnings.append(
                             f"Could not create {kind.value} snapshot for {element_id} ({type(exc).__name__})."
                         )
+            for element in elements:
+                pages[int(element.element_id[1:5]) - 1].elements.append(element)
+            if requested.intersection({ExtractionField.HEADER, ExtractionField.FOOTER}):
+                self._append_repeated_pdf_edge_furniture(pdf_path, pages)
             if ExtractionField.BODY_TEXT in requested:
                 self._apply_empty_page_fallback(pages, source_texts)
         except Exception as exc:
             raise ParserExecutionError("normalization", type(exc).__name__) from exc
-        for element in elements:
-            pages[int(element.element_id[1:5]) - 1].elements.append(element)
-        self._classify_repeated_page_edges(pages)
+        if requested.intersection({ExtractionField.HEADER, ExtractionField.FOOTER}):
+            self._classify_repeated_page_edges(pages)
         for page in pages:
             page.elements.sort(key=lambda element: (
                 0 if element.type == ExtractionField.HEADER else
@@ -254,7 +279,7 @@ class DoclingAdapter:
             return ExtractionField.CAPTION
         if "code" in label:
             return ExtractionField.CODE
-        if isinstance(text, str) and bbox is not None and bbox.y0 >= 0.78:
+        if isinstance(text, str) and bbox is not None and bbox.y0 >= FOOTNOTE_ZONE_START:
             footnote_marker = re.match(r"^\s*(?:\[\d+\]|\(\d+\)|\d{1,2}[.)]|[*†‡])\s+", text)
             if footnote_marker:
                 return ExtractionField.FOOTNOTE
@@ -338,9 +363,20 @@ class DoclingAdapter:
                     cell_data["bbox"] = None
             structured_cells.append(cell_data)
         if structured_cells:
+            row_count = max(cell["row_index"] + cell["row_span"]
+                            for cell in structured_cells)
+            column_count = max(cell["column_index"] + cell["column_span"]
+                               for cell in structured_cells)
             element.attributes["table_status"] = "structured"
             element.attributes["table_validation_status"] = "needs_review"
             element.attributes["table_cells"] = structured_cells
+            element.attributes["table_metrics"] = {
+                "cell_count": len(structured_cells),
+                "row_count": row_count,
+                "column_count": column_count,
+                "empty_cell_count": sum(not cell["text"].strip() for cell in structured_cells),
+                "structural_validation": "not_performed",
+            }
             page.warnings.append("TABLE_STRUCTURED_NEEDS_REVIEW")
         else:
             element.attributes["table_status"] = "visual_only"
@@ -356,20 +392,47 @@ class DoclingAdapter:
                 element.type == ExtractionField.BODY_TEXT and element.text
                 for element in page.elements
             )
+            overlap_chars = 0
             if not has_body_text and source_text.strip():
+                # Docling may emit headings, captions, or furniture without any body
+                # blocks. Remove those exact spans from the full-page fallback so the
+                # same source text is not represented twice in metadata/DOCX.
+                fallback_text = source_text
+                for element in page.elements:
+                    if not element.text or len(element.text.strip()) < 4:
+                        continue
+                    tokens = element.text.split()
+                    if not tokens:
+                        continue
+                    pattern = r"\s+".join(re.escape(token) for token in tokens)
+                    fallback_text, removed = re.subn(
+                        pattern, " ", fallback_text, count=1, flags=re.IGNORECASE
+                    )
+                    if removed:
+                        overlap_chars += len(element.text)
+                fallback_text = re.sub(r"[ \t]+", " ", fallback_text)
+                fallback_text = re.sub(r"\n\s*\n\s*\n+", "\n\n", fallback_text).strip()
+            else:
+                fallback_text = source_text.strip()
+            if not has_body_text and fallback_text:
                 page.elements.append(Element(
                     element_id=f"p{page.page_number:04d}-pypdf-body",
                     type=ExtractionField.BODY_TEXT,
-                    text=source_text.strip(),
+                    text=fallback_text,
                     reading_order=max((element.reading_order for element in page.elements),
                                       default=-1) + 1,
                     attributes={"source": "pypdf_fallback",
                                 "fallback_reason": "docling_body_text_empty",
+                                "overlap_removed_char_count": overlap_chars,
                                 "parser_label": "pypdf_text"},
                 ))
                 page.warnings.append("BODY_TEXT_FALLBACK_USED")
-                if find_spec("fontTools") is None:
-                    page.warnings.append("PYPDF_FONTTOOLS_UNAVAILABLE")
+                if overlap_chars:
+                    page.warnings.append("BODY_TEXT_FALLBACK_OVERLAP_REMOVED")
+                # The optional font decoder warning is relevant to the affected text,
+                # not every page that happens to use pypdf as a fallback.
+                if "\ufffd" in fallback_text and find_spec("fontTools") is None:
+                    page.warnings.append("PYPDF_FONTTOOLS_UNAVAILABLE_WITH_UNICODE_SUSPECT")
             elif not has_body_text:
                 page.warnings.append("BODY_TEXT_SOURCE_LAYER_EMPTY")
 
@@ -380,10 +443,10 @@ class DoclingAdapter:
             for element in page.elements:
                 if element.type != ExtractionField.BODY_TEXT or not element.text or not element.bbox:
                     continue
-                if element.bbox.y1 <= 0.12:
+                if element.bbox.y1 <= FURNITURE_ZONE_FRACTION:
                     zone = "header"
                     key = re.sub(r"\s+", " ", element.text).strip().casefold()
-                elif element.bbox.y0 >= 0.88:
+                elif element.bbox.y0 >= 1 - FURNITURE_ZONE_FRACTION:
                     zone = "footer"
                     key = re.sub(r"\s+", " ", element.text).strip().casefold()
                 else:
@@ -400,9 +463,9 @@ class DoclingAdapter:
                 if element.type != ExtractionField.BODY_TEXT or not element.text or not element.bbox:
                     continue
                 key = re.sub(r"\s+", " ", element.text).strip().casefold()
-                if element.bbox.y1 <= 0.12:
+                if element.bbox.y1 <= FURNITURE_ZONE_FRACTION:
                     zone = "header"
-                elif element.bbox.y0 >= 0.88:
+                elif element.bbox.y0 >= 1 - FURNITURE_ZONE_FRACTION:
                     zone = "footer"
                 else:
                     continue
@@ -417,6 +480,86 @@ class DoclingAdapter:
                     element.attributes["classification_reason"] = "repeated_text_at_page_bottom"
                     element.confidence = 0.8
 
+    @staticmethod
+    def _append_repeated_pdf_edge_furniture(pdf_path: str, pages: list[Page]) -> None:
+        """Use repeated PDF text spans as a second signal alongside Docling furniture."""
+        from pypdf import PdfReader, mult
+
+        candidates: list[tuple[int, str, str, BoundingBox, float]] = []
+        reader = PdfReader(pdf_path, strict=False)
+        for page_index, pdf_page in enumerate(reader.pages[:len(pages)]):
+            height = float(pdf_page.mediabox.height)
+            width = float(pdf_page.mediabox.width)
+            if height <= 0 or width <= 0:
+                continue
+
+            def visit(text, cm, tm, _font, font_size):
+                value = " ".join(str(text).split()).strip()
+                if len(value) < 3:
+                    return
+                normalized = re.sub(r"\s+", " ", value).casefold()
+                if re.fullmatch(r"(?:page\s+)?\d{1,4}(?:\s+of\s+\d{1,4})?|[ivxlcdm]+", normalized):
+                    return
+                matrix = mult(tm, cm)
+                baseline = float(matrix[5])
+                size = float(font_size or 0)
+                top = max(0, min(1, 1 - (baseline + size) / height))
+                bottom = max(0, min(1, 1 - baseline / height))
+                if bottom <= FURNITURE_ZONE_FRACTION:
+                    zone = "header"
+                elif top >= 1 - FURNITURE_ZONE_FRACTION:
+                    zone = "footer"
+                else:
+                    return
+                x0 = max(0, min(1, float(matrix[4]) / width))
+                x1 = max(x0, min(1, (float(matrix[4]) + max(size, len(value) * size * 0.4)) / width))
+                box = BoundingBox(x0=x0, y0=max(0, top), x1=x1, y1=min(1, bottom))
+                candidates.append((page_index + 1, zone, value, box, size))
+
+            pdf_page.extract_text(visitor_text=visit)
+
+        counts: dict[tuple[str, str], set[int]] = {}
+        for page_no, zone, value, _box, _size in candidates:
+            key = re.sub(r"\s+", " ", value).strip().casefold()
+            counts.setdefault((zone, key), set()).add(page_no)
+        minimum_pages = max(2, math.ceil(len(pages) * FURNITURE_REPEAT_FRACTION))
+        repeating = {key: page_numbers for key, page_numbers in counts.items()
+                     if len(page_numbers) >= minimum_pages}
+        for page_no, zone, value, box, size in candidates:
+            key = (zone, re.sub(r"\s+", " ", value).strip().casefold())
+            page_numbers = repeating.get(key)
+            if page_numbers is None:
+                continue
+            page = pages[page_no - 1]
+            kind = ExtractionField.HEADER if zone == "header" else ExtractionField.FOOTER
+            existing = next((element for element in page.elements
+                             if element.text and " ".join(element.text.split()).casefold() == key[1]
+                             and element.type in {ExtractionField.BODY_TEXT,
+                                                  ExtractionField.HEADER,
+                                                  ExtractionField.FOOTER}), None)
+            if existing is not None:
+                existing.type = kind
+                existing.bbox = existing.bbox or box
+                existing.confidence = max(existing.confidence or 0, 0.75)
+                existing.attributes["classification_reason"] = "repeated_pdf_edge_text"
+                existing.attributes["repeat_page_count"] = len(page_numbers)
+                existing.attributes["font_size_pt"] = round(size, 2)
+                continue
+            if any(element.type == kind and element.text
+                   and " ".join(element.text.split()).casefold() == key[1]
+                   for element in page.elements):
+                continue
+            page.elements.append(Element(
+                element_id=f"p{page_no:04d}-pdf-{zone}-{len(page.elements)+1:04d}",
+                type=kind, text=value,
+                reading_order=max((element.reading_order for element in page.elements),
+                                  default=-1) + 1,
+                bbox=box, confidence=0.75,
+                attributes={"source": "pdf_repeated_edge_text",
+                            "classification_reason": "repeated_pdf_edge_text",
+                            "repeat_page_count": len(page_numbers),
+                            "font_size_pt": round(size, 2)},
+            ))
     @staticmethod
     def _append_pdf_page_numbers(pdf_path: str, pages: list[Page],
                                  requested: set[ExtractionField]) -> None:
@@ -444,7 +587,8 @@ class DoclingAdapter:
                 vertical_position = baseline / height
                 if vertical_position < 0 or vertical_position > 1:
                     return
-                if 0.12 < vertical_position < 0.88:
+                if (FURNITURE_ZONE_FRACTION < vertical_position
+                        < 1 - FURNITURE_ZONE_FRACTION):
                     return
                 if page.printed_page_label is None:
                     page.printed_page_label = line
@@ -524,7 +668,22 @@ class DoclingAdapter:
                         if matching_chars:
                             matching_chars.sort(key=lambda char: (round(float(char["top"]), 1),
                                                                  float(char["x0"])))
-                            link_text = "".join(str(char["text"]) for char in matching_chars).strip()
+                            pieces: list[str] = []
+                            previous = None
+                            for char in matching_chars:
+                                if previous is not None:
+                                    current_size = float(char.get("size", 0) or 0)
+                                    same_line = abs(float(char["top"]) - float(previous["top"])) <= max(
+                                        2.0, current_size * 0.5
+                                    )
+                                    gap = float(char["x0"]) - float(previous["x1"])
+                                    if not same_line:
+                                        pieces.append("\n")
+                                    elif gap > max(1.0, current_size * 0.2):
+                                        pieces.append(" ")
+                                pieces.append(str(char["text"]))
+                                previous = char
+                            link_text = "".join(pieces).strip()
                         if not link_text:
                             matching_text = []
                             for element in page.elements:
