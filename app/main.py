@@ -15,19 +15,21 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 from starlette.concurrency import run_in_threadpool
 
-from app.artifacts.package import build_package
+from app.artifacts.package import DOCX_MARGIN_INCHES, build_package
 from app.parsers.docling_adapter import (FOOTNOTE_ZONE_START, FURNITURE_REPEAT_FRACTION,
-                                         FURNITURE_ZONE_FRACTION, DoclingAdapter,
+                                         FURNITURE_ZONE_FRACTION,
+                                         BODY_COVERAGE_RECOVERY_THRESHOLD,
+                                         BODY_COVERAGE_REVIEW_THRESHOLD, DoclingAdapter,
                                          ParserExecutionError, ParserUnavailableError)
-from app.schemas.models import (DocumentInfo, ExtractionField, ExtractionRequest,
+from app.schemas.models import (BODY_CONTENT_FIELDS, DocumentInfo, ExtractionField, ExtractionRequest,
                                 FieldExtractionStatus, Metadata, ProcessingInfo)
 from app.security.pdf import MAX_UPLOAD_BYTES, safe_filename, validate_pdf
 
-ADAPTER_VERSION = "0.3.0"
+ADAPTER_VERSION = "0.5.0"
 APP_BUILD_ID = os.getenv("PDFLENS_BUILD_ID", f"pdflens-replacement-adapter-{ADAPTER_VERSION}")
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger("pdflens")
-app = FastAPI(title="PDFLens Replacement", version="0.2.0",
+app = FastAPI(title="PDFLens Replacement", version="0.3.0",
               description="PDF extraction evaluation service; legacy compatibility is pending contract discovery.")
 MAX_PAGES = int(os.getenv("PDFLENS_MAX_PAGES", "500"))
 PARSER = DoclingAdapter()
@@ -40,7 +42,7 @@ def _assemble_body_text(page) -> str:
     duplicate_chars = 0
     extracted_body_chars = 0
     for element in sorted(page.elements, key=lambda item: item.reading_order):
-        if element.type == ExtractionField.BODY_TEXT and element.text:
+        if element.type in BODY_CONTENT_FIELDS and element.text:
             value = element.text
         elif element.type in {ExtractionField.IMAGE, ExtractionField.TABLE}:
             name = element.artifact_path or element.element_id
@@ -54,7 +56,7 @@ def _assemble_body_text(page) -> str:
             continue
         if normalized:
             seen.add(normalized)
-            if element.type == ExtractionField.BODY_TEXT:
+            if element.type in BODY_CONTENT_FIELDS:
                 extracted_body_chars += len(value.strip())
         parts.append(value)
     page.duplicate_text_char_count = duplicate_chars
@@ -73,6 +75,33 @@ def _dependency_versions() -> dict[str, str]:
         except PackageNotFoundError:
             found[package] = "not_installed"
     return found
+
+
+def _assess_page_quality(page) -> str:
+    """Gate the assembled body text independently from structural element coverage."""
+    if page.source_text_char_count == 0 or page.body_text_to_source_text_ratio is None:
+        page.text_quality_status = "unassessed"
+        return page.text_quality_status
+    ratio = page.body_text_to_source_text_ratio
+    unresolved_tables = any(
+        element.type == ExtractionField.TABLE
+        and element.attributes.get("table_validation_status") != "validated"
+        for element in page.elements
+    )
+    if ratio < BODY_COVERAGE_RECOVERY_THRESHOLD:
+        page.text_quality_status = "review" if unresolved_tables else "failed"
+        warning = ("BODY_TEXT_QUALITY_GATE_REVIEW" if unresolved_tables
+                   else "BODY_TEXT_QUALITY_GATE_FAILED")
+        if warning not in page.warnings:
+            page.warnings.append(warning)
+    elif (ratio < BODY_COVERAGE_REVIEW_THRESHOLD or ratio > 1.2
+          or page.fallback_used or unresolved_tables
+          or "UNICODE_SUSPECT" in page.warnings
+          or "BODY_TEXT_SOURCE_COVERAGE_LOW" in page.warnings):
+        page.text_quality_status = "review"
+    else:
+        page.text_quality_status = "passed"
+    return page.text_quality_status
 
 
 @app.get("/healthz")
@@ -158,6 +187,7 @@ async def extract(file: UploadFile = File(...),
                 ord(character) < 32 and character not in "\n\r\t" for character in page_text
             ) or any(marker in page_text for marker in ("Ã", "Â", "â€", "ï¿½")):
                 page.warnings.append("UNICODE_SUSPECT")
+            _assess_page_quality(page)
             if ExtractionField.PAGE_NUMBER in selected and not page.printed_page_label:
                 page.warnings.append("PAGE_LABEL_NOT_DETECTED")
 
@@ -178,6 +208,8 @@ async def extract(file: UploadFile = File(...),
                         page.duplicate_text_char_count
                         or any(warning in page.warnings for warning in (
                             "BODY_TEXT_FALLBACK_USED", "BODY_TEXT_FALLBACK_OVERLAP_REMOVED",
+                            "BODY_TEXT_PARTIAL_FALLBACK_USED", "BODY_TEXT_SOURCE_COVERAGE_LOW",
+                            "BODY_TEXT_QUALITY_GATE_FAILED", "BODY_TEXT_QUALITY_GATE_REVIEW",
                             "BODY_TEXT_EXACT_DUPLICATE_REMOVED", "UNICODE_SUSPECT",
                         ))
                     ):
@@ -196,6 +228,10 @@ async def extract(file: UploadFile = File(...),
 
         warning_summary = {code: len(page_numbers)
                            for code, page_numbers in sorted(warning_pages.items())}
+        page_quality_summary = {
+            status: sum(page.text_quality_status == status for page in parsed.pages)
+            for status in ("passed", "review", "failed", "unassessed")
+        }
         parser_warnings = [warning for warning in parsed.warnings
                            if not re.match(r"^page \d+: ", warning)]
         for code, page_numbers in sorted(warning_pages.items()):
@@ -229,14 +265,22 @@ async def extract(file: UploadFile = File(...),
                     "furniture_zone_fraction": FURNITURE_ZONE_FRACTION,
                     "furniture_repeat_fraction": FURNITURE_REPEAT_FRACTION,
                     "footnote_zone_start": FOOTNOTE_ZONE_START,
+                    "body_coverage_recovery_threshold": BODY_COVERAGE_RECOVERY_THRESHOLD,
+                    "body_coverage_review_threshold": BODY_COVERAGE_REVIEW_THRESHOLD,
+                    "docx_layout_mode": "editable_reflowable",
+                    "docx_margin_inches": DOCX_MARGIN_INCHES,
                 },
                 dependency_versions=_dependency_versions(),
                 requested_fields=request.extraction_fields,
                 extracted_fields=sorted(extracted_fields, key=lambda item: item.value),
                 missing_fields=sorted(selected - extracted_fields, key=lambda item: item.value),
-                status="partial_success" if selected - extracted_fields or quality_warnings else "success",
                 warnings=parsed.warnings,
                 warning_summary=warning_summary,
+                page_quality_summary=page_quality_summary,
+                docx_layout_mode="editable_reflowable",
+                status=("failed" if page_quality_summary["failed"] else
+                        "partial_success" if selected - extracted_fields or quality_warnings
+                        or page_quality_summary["review"] else "success"),
             ),
             pages=parsed.pages,
         )

@@ -3,22 +3,28 @@ from __future__ import annotations
 from importlib.util import find_spec
 from importlib.metadata import PackageNotFoundError, version
 from io import BytesIO
+from collections import Counter
 import math
 import os
 import re
+import unicodedata
 
 from app.parsers.base import ParsedAsset, ParsedDocument
-from app.schemas.models import BoundingBox, Element, ExtractionField, Page
+from app.schemas.models import BODY_CONTENT_FIELDS, BoundingBox, Element, ExtractionField, Page
 
 FURNITURE_ZONE_FRACTION = float(os.getenv("PDFLENS_FURNITURE_ZONE_FRACTION", "0.12"))
 FURNITURE_REPEAT_FRACTION = float(os.getenv("PDFLENS_FURNITURE_REPEAT_FRACTION", "0.10"))
 FOOTNOTE_ZONE_START = float(os.getenv("PDFLENS_FOOTNOTE_ZONE_START", "0.78"))
+BODY_COVERAGE_REVIEW_THRESHOLD = float(os.getenv("PDFLENS_BODY_COVERAGE_REVIEW_THRESHOLD", "0.90"))
+BODY_COVERAGE_RECOVERY_THRESHOLD = float(os.getenv("PDFLENS_BODY_COVERAGE_RECOVERY_THRESHOLD", "0.75"))
 if not 0 < FURNITURE_ZONE_FRACTION < 0.5:
     raise RuntimeError("PDFLENS_FURNITURE_ZONE_FRACTION must be between 0 and 0.5")
 if not 0 < FURNITURE_REPEAT_FRACTION <= 1:
     raise RuntimeError("PDFLENS_FURNITURE_REPEAT_FRACTION must be in (0, 1]")
 if not 0 < FOOTNOTE_ZONE_START < 1:
     raise RuntimeError("PDFLENS_FOOTNOTE_ZONE_START must be between 0 and 1")
+if not 0 <= BODY_COVERAGE_RECOVERY_THRESHOLD < BODY_COVERAGE_REVIEW_THRESHOLD <= 1:
+    raise RuntimeError("Body coverage thresholds must satisfy 0 <= recovery < review <= 1")
 
 
 class ParserUnavailableError(RuntimeError):
@@ -214,6 +220,7 @@ class DoclingAdapter:
         if ExtractionField.HYPERLINK in requested:
             try:
                 self._append_pdf_links(pdf_path, pages, link_warnings)
+                self._append_internal_pdf_links(pdf_path, pages, link_warnings)
             except Exception as exc:
                 link_warnings.append(f"Hyperlink annotation extraction failed ({type(exc).__name__}).")
         if ExtractionField.FOOTNOTE in requested:
@@ -393,32 +400,126 @@ class DoclingAdapter:
                 for element in page.elements
             )
             overlap_chars = 0
-            if not has_body_text and source_text.strip():
+            overlap_decisions: list[dict[str, object]] = []
+            if source_text.strip():
                 # Docling may emit headings, captions, or furniture without any body
                 # blocks. Remove those exact spans from the full-page fallback so the
                 # same source text is not represented twice in metadata/DOCX.
                 fallback_text = source_text
                 for element in page.elements:
-                    if not element.text or len(element.text.strip()) < 4:
-                        continue
-                    tokens = element.text.split()
-                    if not tokens:
-                        continue
-                    pattern = r"\s+".join(re.escape(token) for token in tokens)
-                    fallback_text, removed = re.subn(
-                        pattern, " ", fallback_text, count=1, flags=re.IGNORECASE
+                    observed_texts = [element.text or ""]
+                    observed_texts.extend(
+                        str(cell.get("text", ""))
+                        for cell in element.attributes.get("table_cells", [])
+                        if isinstance(cell, dict)
                     )
-                    if removed:
-                        overlap_chars += len(element.text)
+                    for observed_text in observed_texts:
+                        if len(observed_text.strip()) < 4:
+                            continue
+                        tokens = observed_text.split()
+                        if not tokens:
+                            continue
+                        pattern = r"\s+".join(re.escape(token) for token in tokens)
+                        fallback_text, removed = re.subn(
+                            pattern, " ", fallback_text, count=1, flags=re.IGNORECASE
+                        )
+                        if removed:
+                            overlap_chars += len(observed_text)
+                            overlap_decisions.append({
+                                "element_id": element.element_id,
+                                "element_type": element.type.value,
+                                "source_char_count": len(observed_text),
+                                "decision": "excluded_from_empty_page_fallback",
+                            })
                 fallback_text = re.sub(r"[ \t]+", " ", fallback_text)
                 fallback_text = re.sub(r"\n\s*\n\s*\n+", "\n\n", fallback_text).strip()
             else:
                 fallback_text = source_text.strip()
-            if not has_body_text and fallback_text:
+            def element_text(element: Element) -> str:
+                table_text = " ".join(
+                    str(cell.get("text", ""))
+                    for cell in element.attributes.get("table_cells", [])
+                    if isinstance(cell, dict)
+                )
+                return " ".join(value for value in (element.text or "", table_text) if value)
+
+            primary_text = "\n".join(
+                element_text(element) for element in page.elements if element.text or
+                element.attributes.get("table_cells")
+            )
+            source_tokens = list(re.finditer(r"\w+", source_text, flags=re.UNICODE))
+            primary_tokens = list(re.finditer(r"\w+", primary_text, flags=re.UNICODE))
+            def normalize(value: str) -> str:
+                return unicodedata.normalize("NFC", value).casefold()
+
+            source_values = [normalize(match.group()) for match in source_tokens]
+            primary_values = [normalize(match.group()) for match in primary_tokens]
+            available = Counter(primary_values)
+            missing_indices: list[int] = []
+            for token_index, token in enumerate(source_values):
+                if available[token]:
+                    available[token] -= 1
+                else:
+                    missing_indices.append(token_index)
+            coverage = ((len(source_tokens) - len(missing_indices)) / len(source_tokens)
+                        if source_tokens else None)
+            page.source_text_coverage_before_recovery = coverage
+            page.unmatched_source_token_count = len(missing_indices)
+            missing_runs: list[tuple[int, int]] = []
+            for token_index in missing_indices:
+                if missing_runs and token_index == missing_runs[-1][1]:
+                    missing_runs[-1] = (missing_runs[-1][0], token_index + 1)
+                else:
+                    missing_runs.append((token_index, token_index + 1))
+            page.missing_span_count = len(missing_runs)
+            page.unmatched_source_char_count = sum(
+                source_tokens[end - 1].end() - source_tokens[start].start()
+                for start, end in missing_runs
+            )
+            if coverage is not None and coverage < BODY_COVERAGE_REVIEW_THRESHOLD:
+                page.warnings.append("BODY_TEXT_SOURCE_COVERAGE_LOW")
+            recovered = 0
+            if fallback_text and source_tokens and has_body_text and (
+                coverage is not None and coverage < BODY_COVERAGE_REVIEW_THRESHOLD
+            ):
+                # Recover source-only runs as separate, provenance-tagged body blocks.
+                # Source character offsets allow downstream consumers to audit where
+                # the recovered text came from without replacing Docling's structure.
+                for index, (source_start, source_end) in enumerate(missing_runs):
+                    first = source_tokens[source_start]
+                    last = source_tokens[source_end - 1]
+                    start, end = first.start(), last.end()
+                    snippet = source_text[start:end].strip()
+                    if not snippet:
+                        continue
+                    recovered += len(snippet)
+                    page.elements.append(Element(
+                        element_id=f"p{page.page_number:04d}-pypdf-recovery-{index + 1:03d}",
+                        type=ExtractionField.BODY_TEXT,
+                        text=snippet,
+                        reading_order=max((element.reading_order for element in page.elements),
+                                          default=-1) + 1,
+                        attributes={"source": "pypdf_fallback",
+                                    "fallback_reason": "unmatched_source_text_span",
+                                    "source_char_start": start,
+                                    "source_char_end": end,
+                                    "source_token_start": source_start,
+                                    "source_token_end": source_end,
+                                    "parser_label": "pypdf_text"},
+                    ))
+                if recovered:
+                    page.warnings.append("BODY_TEXT_PARTIAL_FALLBACK_USED")
+            page.recovered_source_char_count = recovered
+            page.fallback_used = bool(recovered or (not has_body_text and fallback_text))
+            page.fallback_chars_added = (
+                recovered if recovered else len(fallback_text) if not has_body_text else 0
+            )
+            page.fallback_overlap_chars_removed = overlap_chars if not has_body_text else 0
+            page.fallback_overlap_decisions = overlap_decisions if not has_body_text else []
+            if not has_body_text and not recovered and fallback_text:
                 page.elements.append(Element(
                     element_id=f"p{page.page_number:04d}-pypdf-body",
-                    type=ExtractionField.BODY_TEXT,
-                    text=fallback_text,
+                    type=ExtractionField.BODY_TEXT, text=fallback_text,
                     reading_order=max((element.reading_order for element in page.elements),
                                       default=-1) + 1,
                     attributes={"source": "pypdf_fallback",
@@ -427,14 +528,38 @@ class DoclingAdapter:
                                 "parser_label": "pypdf_text"},
                 ))
                 page.warnings.append("BODY_TEXT_FALLBACK_USED")
-                if overlap_chars:
-                    page.warnings.append("BODY_TEXT_FALLBACK_OVERLAP_REMOVED")
+            if not has_body_text and overlap_chars:
+                page.warnings.append("BODY_TEXT_FALLBACK_OVERLAP_REMOVED")
+            if not has_body_text and fallback_text:
                 # The optional font decoder warning is relevant to the affected text,
                 # not every page that happens to use pypdf as a fallback.
                 if "\ufffd" in fallback_text and find_spec("fontTools") is None:
                     page.warnings.append("PYPDF_FONTTOOLS_UNAVAILABLE_WITH_UNICODE_SUSPECT")
-            elif not has_body_text:
+            elif not has_body_text and not fallback_text:
                 page.warnings.append("BODY_TEXT_SOURCE_LAYER_EMPTY")
+            recovered_text = "\n".join(
+                element_text(element) for element in page.elements if element.text or
+                element.attributes.get("table_cells")
+            )
+            page.normalized_source_char_count = len(
+                re.sub(r"\s+", " ", unicodedata.normalize("NFC", source_text)).strip()
+            )
+            page.normalized_output_char_count = len(
+                re.sub(r"\s+", " ", unicodedata.normalize("NFC", recovered_text)).strip()
+            )
+            recovered_values = [
+                normalize(match.group())
+                for match in re.finditer(r"\w+", recovered_text, flags=re.UNICODE)
+            ]
+            final_available = Counter(recovered_values)
+            final_matched = 0
+            for token in source_values:
+                if final_available[token]:
+                    final_available[token] -= 1
+                    final_matched += 1
+            page.source_text_coverage_ratio = (
+                final_matched / len(source_tokens) if source_tokens else None
+            )
 
     @staticmethod
     def _classify_repeated_page_edges(pages: list[Page]) -> None:
@@ -599,6 +724,10 @@ class DoclingAdapter:
                         return
                 else:
                     kind = ExtractionField.PAGE_NUMBER
+                if kind == ExtractionField.PAGE_NUMBER and any(
+                    element.type == ExtractionField.PAGE_NUMBER for element in page.elements
+                ):
+                    return
                 matching_elements = [
                     element for element in page.elements
                     if element.text
@@ -649,6 +778,7 @@ class DoclingAdapter:
                 for link in source_page.hyperlinks:
                     uri = link.get("uri")
                     if not uri:
+                        page.hyperlink_unresolved_target_count += 1
                         warnings.append(f"page {page.page_number}: PDF link annotation has no URI target.")
                         continue
                     bbox = None
@@ -703,6 +833,7 @@ class DoclingAdapter:
                         parsed_uri = None
                         target_status = "malformed_uri"
                     if not parsed_uri or not parsed_uri.scheme:
+                        page.hyperlink_malformed_uri_count += 1
                         warnings.append(
                             f"page {page.page_number}: hyperlink target validation={target_status} "
                             "(preserved as-is)."
@@ -722,10 +853,82 @@ class DoclingAdapter:
                                     "visible_text_status": "matched" if link_text else "missing",
                                     "target_validation": target_status},
                     ))
+                    page.hyperlink_count += 1
                 if link_index < annotation_count:
                     warnings.append(
                         f"page {page.page_number}: accounted for {link_index} of "
                         f"{annotation_count} PDF link annotations with URI targets."
+                    )
+
+    @staticmethod
+    def _append_internal_pdf_links(pdf_path: str, pages: list[Page],
+                                   warnings: list[str]) -> None:
+        from pypdf import PdfReader
+
+        reader = PdfReader(pdf_path, strict=False)
+        for page_index, pdf_page in enumerate(reader.pages):
+            if page_index >= len(pages):
+                break
+            page = pages[page_index]
+            width = float(pdf_page.mediabox.width)
+            height = float(pdf_page.mediabox.height)
+            for annotation_index, annotation_ref in enumerate(pdf_page.get("/Annots", []) or [], 1):
+                annotation = annotation_ref.get_object()
+                action = annotation.get("/A")
+                if action is None or str(action.get("/S")) != "/GoTo":
+                    continue
+                page.hyperlink_count += 1
+                destination = action.get("/D")
+                target_uri = None
+                try:
+                    if isinstance(destination, str):
+                        destination = reader.named_destinations.get(destination)
+                    destination_page = getattr(destination, "page", None)
+                    if destination_page is None:
+                        destination_page = destination[0]
+                    target_page = reader.get_page_number(destination_page) + 1
+                    target_uri = f"#page={target_page}"
+                except Exception:
+                    page.hyperlink_unresolved_target_count += 1
+                    warnings.append(
+                        f"page {page.page_number}: internal hyperlink destination could not be resolved."
+                    )
+
+                bbox = None
+                rect = annotation.get("/Rect")
+                if rect is not None and width > 0 and height > 0:
+                    x0, y0, x1, y1 = (float(value) for value in rect)
+                    bbox = BoundingBox(
+                        x0=max(0, min(1, x0 / width)),
+                        y0=max(0, min(1, (height - y1) / height)),
+                        x1=max(0, min(1, x1 / width)),
+                        y1=max(0, min(1, (height - y0) / height)),
+                    )
+                visible_text = ""
+                if bbox is not None:
+                    visible_text = " ".join(
+                        element.text or "" for element in page.elements
+                        if element.type != ExtractionField.HYPERLINK and element.text
+                        and element.bbox is not None
+                        and element.bbox.x0 <= bbox.x1 and element.bbox.x1 >= bbox.x0
+                        and element.bbox.y0 <= bbox.y1 and element.bbox.y1 >= bbox.y0
+                    ).strip()
+                page.elements.append(Element(
+                    element_id=f"p{page.page_number:04d}-internal-link-{annotation_index:04d}",
+                    type=ExtractionField.HYPERLINK,
+                    text=visible_text or None,
+                    reading_order=max((element.reading_order for element in page.elements),
+                                      default=-1) + 1,
+                    bbox=bbox,
+                    target_uri=target_uri,
+                    attributes={"source": "pdf_goto_annotation",
+                                "target_type": "internal_page",
+                                "visible_text_status": "matched" if visible_text else "missing",
+                                "target_validation": "valid" if target_uri else "unresolved"},
+                ))
+                if not visible_text:
+                    warnings.append(
+                        f"page {page.page_number}: HYPERLINK_TEXT_MISSING for internal annotation {annotation_index}."
                     )
 
     @staticmethod

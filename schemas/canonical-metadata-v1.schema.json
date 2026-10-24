@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://example.invalid/schemas/canonical-metadata-v1.schema.json",
-  "title": "PDFLens canonical metadata v1.2",
+  "title": "PDFLens canonical metadata v1.4",
   "type": "object",
   "required": [
     "schema_version",
@@ -12,7 +12,7 @@
   ],
   "properties": {
     "schema_version": {
-      "const": "1.2"
+      "const": "1.4"
     },
     "document": {
       "type": "object",
@@ -59,7 +59,9 @@
         "missing_fields",
         "warnings",
         "errors",
-        "adapter_version"
+        "adapter_version",
+        "docx_layout_mode",
+        "docx_layout_status"
       ],
       "properties": {
         "parser_name": {
@@ -120,7 +122,15 @@
         "warning_summary": {
           "type": "object",
           "additionalProperties": {"type": "integer", "minimum": 0}
-        }
+        },
+        "page_quality_summary": {
+          "type": "object",
+          "additionalProperties": {"type": "integer", "minimum": 0}
+        },
+        "docx_layout_mode": {"type": "string"},
+        "docx_layout_status": {"type": "string"},
+        "docx_page_width_pt": {"type": ["number", "null"], "exclusiveMinimum": 0},
+        "docx_page_height_pt": {"type": ["number", "null"], "exclusiveMinimum": 0}
       },
       "additionalProperties": false
     },
@@ -315,6 +325,22 @@
         "body_text_char_count",
         "duplicate_text_char_count",
         "body_text_to_source_text_ratio",
+        "source_text_coverage_before_recovery",
+        "source_text_coverage_ratio",
+        "normalized_source_char_count",
+        "normalized_output_char_count",
+        "missing_span_count",
+        "unmatched_source_char_count",
+        "unmatched_source_token_count",
+        "recovered_source_char_count",
+        "fallback_used",
+        "fallback_chars_added",
+        "fallback_overlap_chars_removed",
+        "fallback_overlap_decisions",
+        "text_quality_status",
+        "hyperlink_count",
+        "hyperlink_unresolved_target_count",
+        "hyperlink_malformed_uri_count",
         "field_status",
         "warnings"
       ],
@@ -378,6 +404,41 @@
           ],
           "minimum": 0
         },
+        "source_text_coverage_before_recovery": {
+          "type": ["number", "null"], "minimum": 0, "maximum": 1
+        },
+        "source_text_coverage_ratio": {
+          "type": ["number", "null"], "minimum": 0, "maximum": 1
+        },
+        "normalized_source_char_count": {"type": "integer", "minimum": 0},
+        "normalized_output_char_count": {"type": "integer", "minimum": 0},
+        "missing_span_count": {"type": "integer", "minimum": 0},
+        "unmatched_source_char_count": {"type": "integer", "minimum": 0},
+        "unmatched_source_token_count": {"type": "integer", "minimum": 0},
+        "recovered_source_char_count": {"type": "integer", "minimum": 0},
+        "fallback_used": {"type": "boolean"},
+        "fallback_chars_added": {"type": "integer", "minimum": 0},
+        "fallback_overlap_chars_removed": {"type": "integer", "minimum": 0},
+        "fallback_overlap_decisions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["element_id", "element_type", "source_char_count", "decision"],
+            "properties": {
+              "element_id": {"type": "string"},
+              "element_type": {"type": "string"},
+              "source_char_count": {"type": "integer", "minimum": 0},
+              "decision": {"type": "string"}
+            },
+            "additionalProperties": false
+          }
+        },
+        "text_quality_status": {
+          "enum": ["unassessed", "passed", "review", "failed"]
+        },
+        "hyperlink_count": {"type": "integer", "minimum": 0},
+        "hyperlink_unresolved_target_count": {"type": "integer", "minimum": 0},
+        "hyperlink_malformed_uri_count": {"type": "integer", "minimum": 0},
         "field_status": {
           "type": "object",
           "additionalProperties": {

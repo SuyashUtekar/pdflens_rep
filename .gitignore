@@ -9,6 +9,9 @@ dist/
 build/
 *.egg-info/
 artifacts/
+!app/artifacts/
+app/artifacts/*
+!app/artifacts/*.py
 *.pdf
 *.zip
 rbi_docs/*

@@ -10,11 +10,13 @@ Feasibility implementation for a PDF extraction service that produces page-orien
 - Docling furniture-tree headers and footers, supplemented by repeated text at consistent page edges; page labels and footnotes are tracked separately.
 - Per-page source-text counts, normalized body-text counts/ratios, explicit field statuses, and a provenance-marked pypdf fallback when Docling emits no body text for a page with a text layer.
 - Table cell structures when Docling exposes them; otherwise table snapshots are labeled `visual_only`. Repeated identical image snapshots are flagged without removing page-specific files.
-- Output ZIP: the original PDF, `document.docx`, `metadata.json`, `manifest.json`, plus detected crops under `images/` and `tables/` when requested and available. The DOCX is built from an in-memory structured HTML representation that preserves headings, reading order, page boundaries, links, and asset references; no HTML file is written to disk or included in the ZIP.
+- Output ZIP: the original PDF, `document.docx`, `metadata.json`, `manifest.json`, plus detected crops under `images/` and `tables/` when requested and available. The DOCX is built from an in-memory structured HTML representation that preserves headings, reading order, links, and asset references; it reflows continuously rather than forcing source-page boundaries. No HTML file is written to disk or included in the ZIP.
 - DOCX is an editable text reconstruction. Image and table snapshots are separate PNG artifacts linked from their canonical metadata elements.
 - `/healthz` liveness and `/readyz` parser-package readiness endpoints. Readiness does not warm models.
 - Reused Docling pipelines, serialized model inference, and aggregate quality warnings with page counts to identify without flooding logs.
-- Metadata schema 1.2 records run/build identity, UTC processing time, extraction configuration, runtime dependency versions, warning counts, per-page review states, and checksums.
+- Metadata schema 1.4 records run/build identity, extraction configuration, runtime dependency versions, per-page body coverage and recovery diagnostics, extraction quality, DOCX layout mode, and checksums.
+- Table cells remain structured table content and appear as table markers in `body_text`, as required by the extraction contract. Consequently, `body_text_to_source_text_ratio` can be low on table-heavy pages; `source_text_coverage_ratio` also accounts for table-cell text. Structured tables remain `needs_review` until their values and layout are checked against the source.
+- DOCX output is explicitly editable and reflowable. It uses the source PDF's first-page dimensions, configurable margins, native Word tables for structured table elements, and internal bookmarks for PDF page-navigation links; its pagination is not a page-faithful copy of the PDF.
 - Fallback text removes exact spans already emitted as typed elements; repeated body blocks are removed and counted. Uncertain footnote candidates stay in body text.
 - Repeated identical image/table bytes are packaged once while each occurrence keeps its page element and bounding box. Generated PNG and DOCX structure are checked before ZIP creation.
 
@@ -54,6 +56,9 @@ Running headers and footers are collected from Docling’s furniture tree and ex
 | `PDFLENS_FURNITURE_ZONE_FRACTION` | 0.12 | Page-edge zone used when assessing repeating headers and footers |
 | `PDFLENS_FURNITURE_REPEAT_FRACTION` | 0.10 | Minimum fraction of pages on which edge text must repeat to classify as running furniture (at least two pages) |
 | `PDFLENS_FOOTNOTE_ZONE_START` | 0.78 | Lower-page boundary used as one footnote-classification signal |
+| `PDFLENS_BODY_COVERAGE_RECOVERY_THRESHOLD` | 0.75 | Body-text-to-source-text character ratio below which pages fail quality unless unresolved tables require review |
+| `PDFLENS_BODY_COVERAGE_REVIEW_THRESHOLD` | 0.90 | Body-text-to-source-text character ratio below which pages are marked for review; the separate source-token coverage metric drives source-span recovery |
+| `PDFLENS_DOCX_MARGIN_INCHES` | 0.75 | Uniform margin used by editable/reflowable DOCX output; page size follows the source's first page |
 | `PDFLENS_BUILD_ID` | adapter build ID | Override for identifying the exact service build in metadata |
 | `LOG_LEVEL` | `INFO` | Application log level |
 

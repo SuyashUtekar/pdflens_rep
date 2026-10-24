@@ -24,6 +24,13 @@ class ExtractionField(StrEnum):
     OTHER = "other"
 
 
+BODY_CONTENT_FIELDS = frozenset({
+    ExtractionField.BODY_TEXT, ExtractionField.HEADING, ExtractionField.LIST,
+    ExtractionField.CAPTION, ExtractionField.EQUATION, ExtractionField.CODE,
+    ExtractionField.FORM_FIELD, ExtractionField.OTHER,
+})
+
+
 class FieldExtractionStatus(StrEnum):
     EXTRACTED = "extracted"
     EXTRACTED_UNVALIDATED = "extracted_unvalidated"
@@ -75,6 +82,22 @@ class Page(BaseModel):
     body_text_char_count: int = Field(default=0, ge=0)
     duplicate_text_char_count: int = Field(default=0, ge=0)
     body_text_to_source_text_ratio: float | None = Field(default=None, ge=0)
+    source_text_coverage_before_recovery: float | None = Field(default=None, ge=0, le=1)
+    source_text_coverage_ratio: float | None = Field(default=None, ge=0, le=1)
+    normalized_source_char_count: int = Field(default=0, ge=0)
+    normalized_output_char_count: int = Field(default=0, ge=0)
+    missing_span_count: int = Field(default=0, ge=0)
+    unmatched_source_char_count: int = Field(default=0, ge=0)
+    unmatched_source_token_count: int = Field(default=0, ge=0)
+    recovered_source_char_count: int = Field(default=0, ge=0)
+    fallback_used: bool = False
+    fallback_chars_added: int = Field(default=0, ge=0)
+    fallback_overlap_chars_removed: int = Field(default=0, ge=0)
+    fallback_overlap_decisions: list[dict[str, Any]] = Field(default_factory=list)
+    text_quality_status: str = "unassessed"
+    hyperlink_count: int = Field(default=0, ge=0)
+    hyperlink_unresolved_target_count: int = Field(default=0, ge=0)
+    hyperlink_malformed_uri_count: int = Field(default=0, ge=0)
     field_status: dict[str, FieldExtractionStatus] = Field(default_factory=dict)
     warnings: list[str] = Field(default_factory=list)
     elements: list[Element] = Field(default_factory=list)
@@ -91,7 +114,7 @@ class DocumentInfo(BaseModel):
 class ProcessingInfo(BaseModel):
     parser_name: str
     parser_version: str
-    adapter_version: str = "0.3.0"
+    adapter_version: str = "0.5.0"
     run_id: str | None = None
     processed_at_utc: str | None = None
     build_id: str | None = None
@@ -104,6 +127,11 @@ class ProcessingInfo(BaseModel):
     missing_fields: list[ExtractionField] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     warning_summary: dict[str, int] = Field(default_factory=dict)
+    page_quality_summary: dict[str, int] = Field(default_factory=dict)
+    docx_layout_mode: str = "editable_reflowable"
+    docx_layout_status: str = "not_generated"
+    docx_page_width_pt: float | None = Field(default=None, gt=0)
+    docx_page_height_pt: float | None = Field(default=None, gt=0)
     errors: list[str] = Field(default_factory=list)
 
 
@@ -116,7 +144,7 @@ class ArtifactInfo(BaseModel):
 
 
 class Metadata(BaseModel):
-    schema_version: str = "1.2"
+    schema_version: str = "1.4"
     document: DocumentInfo
     processing: ProcessingInfo
     pages: list[Page]
