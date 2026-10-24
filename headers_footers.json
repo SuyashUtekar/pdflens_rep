@@ -1,0 +1,1467 @@
+{
+  "source_pdf": "79MSE010710_F.pdf",
+  "conversion_status": "ConversionStatus.SUCCESS",
+  "header_footer_count": 81,
+  "headers": [
+    {
+      "type": "page_header",
+      "text": "Master Circular Lending to Micro, Small & Medium Enterprises Sector",
+      "docling_label": "page_header",
+      "item_ref": "#/texts/16",
+      "locations": [
+        {
+          "page_number": 2,
+          "bbox": {
+            "left": 350.16096000000005,
+            "top": 804.75518,
+            "right": 510.32833799999986,
+            "bottom": 788.3080069415809,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_header",
+      "text": "Master Circular Lending to Micro, Small & Medium Enterprises Sector",
+      "docling_label": "page_header",
+      "item_ref": "#/texts/29",
+      "locations": [
+        {
+          "page_number": 3,
+          "bbox": {
+            "left": 350.16096000000005,
+            "top": 804.75518,
+            "right": 510.32833799999986,
+            "bottom": 788.3080069415809,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_header",
+      "text": "Master Circular Lending to Micro, Small & Medium Enterprises Sector",
+      "docling_label": "page_header",
+      "item_ref": "#/texts/45",
+      "locations": [
+        {
+          "page_number": 4,
+          "bbox": {
+            "left": 350.16096000000005,
+            "top": 804.75518,
+            "right": 510.32833799999986,
+            "bottom": 788.3080069415809,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_header",
+      "text": "Master Circular Lending to Micro, Small & Medium Enterprises Sector",
+      "docling_label": "page_header",
+      "item_ref": "#/texts/55",
+      "locations": [
+        {
+          "page_number": 5,
+          "bbox": {
+            "left": 350.16096000000005,
+            "top": 804.75518,
+            "right": 510.32833799999986,
+            "bottom": 788.3080069415809,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_header",
+      "text": "Master Circular Lending to Micro, Small & Medium Enterprises Sector",
+      "docling_label": "page_header",
+      "item_ref": "#/texts/68",
+      "locations": [
+        {
+          "page_number": 6,
+          "bbox": {
+            "left": 350.16096000000005,
+            "top": 804.75518,
+            "right": 510.32833799999986,
+            "bottom": 788.3080069415809,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_header",
+      "text": "Master Circular Lending to Micro, Small & Medium Enterprises Sector",
+      "docling_label": "page_header",
+      "item_ref": "#/texts/78",
+      "locations": [
+        {
+          "page_number": 7,
+          "bbox": {
+            "left": 350.16096000000005,
+            "top": 804.75518,
+            "right": 510.32833799999986,
+            "bottom": 788.3080069415809,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_header",
+      "text": "Master Circular Lending to Micro, Small & Medium Enterprises Sector",
+      "docling_label": "page_header",
+      "item_ref": "#/texts/88",
+      "locations": [
+        {
+          "page_number": 8,
+          "bbox": {
+            "left": 350.16096000000005,
+            "top": 804.75518,
+            "right": 510.32833799999986,
+            "bottom": 788.3080069415809,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_header",
+      "text": "Master Circular Lending to Micro, Small & Medium Enterprises Sector",
+      "docling_label": "page_header",
+      "item_ref": "#/texts/100",
+      "locations": [
+        {
+          "page_number": 9,
+          "bbox": {
+            "left": 350.16096000000005,
+            "top": 804.75518,
+            "right": 510.32833799999986,
+            "bottom": 788.3080069415809,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_header",
+      "text": "Master Circular Lending to Micro, Small & Medium Enterprises Sector",
+      "docling_label": "page_header",
+      "item_ref": "#/texts/109",
+      "locations": [
+        {
+          "page_number": 10,
+          "bbox": {
+            "left": 350.16096000000005,
+            "top": 804.75518,
+            "right": 510.32833799999986,
+            "bottom": 788.3080069415809,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_header",
+      "text": "Master Circular Lending to Micro, Small & Medium Enterprises Sector",
+      "docling_label": "page_header",
+      "item_ref": "#/texts/116",
+      "locations": [
+        {
+          "page_number": 11,
+          "bbox": {
+            "left": 350.16096000000005,
+            "top": 804.75518,
+            "right": 510.32833799999986,
+            "bottom": 788.3080069415809,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_header",
+      "text": "Master Circular Lending to Micro, Small & Medium Enterprises Sector",
+      "docling_label": "page_header",
+      "item_ref": "#/texts/130",
+      "locations": [
+        {
+          "page_number": 12,
+          "bbox": {
+            "left": 350.16096000000005,
+            "top": 804.75518,
+            "right": 510.32833799999986,
+            "bottom": 788.3080069415809,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_header",
+      "text": "Master Circular Lending to Micro, Small & Medium Enterprises Sector",
+      "docling_label": "page_header",
+      "item_ref": "#/texts/141",
+      "locations": [
+        {
+          "page_number": 13,
+          "bbox": {
+            "left": 350.16096000000005,
+            "top": 804.75518,
+            "right": 510.32833799999986,
+            "bottom": 788.3080069415809,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_header",
+      "text": "Master Circular Lending to Micro, Small & Medium Enterprises Sector",
+      "docling_label": "page_header",
+      "item_ref": "#/texts/161",
+      "locations": [
+        {
+          "page_number": 14,
+          "bbox": {
+            "left": 350.16096000000005,
+            "top": 804.75518,
+            "right": 510.32833799999986,
+            "bottom": 788.3080069415809,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_header",
+      "text": "Master Circular Lending to Micro, Small & Medium Enterprises Sector",
+      "docling_label": "page_header",
+      "item_ref": "#/texts/176",
+      "locations": [
+        {
+          "page_number": 15,
+          "bbox": {
+            "left": 350.16096000000005,
+            "top": 804.75518,
+            "right": 510.32833799999986,
+            "bottom": 788.3080069415809,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_header",
+      "text": "Master Circular Lending to Micro, Small & Medium Enterprises Sector",
+      "docling_label": "page_header",
+      "item_ref": "#/texts/195",
+      "locations": [
+        {
+          "page_number": 16,
+          "bbox": {
+            "left": 350.16096000000005,
+            "top": 804.75518,
+            "right": 510.32833799999986,
+            "bottom": 788.3080069415809,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_header",
+      "text": "Master Circular Lending to Micro, Small & Medium Enterprises Sector",
+      "docling_label": "page_header",
+      "item_ref": "#/texts/210",
+      "locations": [
+        {
+          "page_number": 17,
+          "bbox": {
+            "left": 350.16096000000005,
+            "top": 804.75518,
+            "right": 510.32833799999986,
+            "bottom": 788.3080069415809,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_header",
+      "text": "Master Circular Lending to Micro, Small & Medium Enterprises Sector",
+      "docling_label": "page_header",
+      "item_ref": "#/texts/227",
+      "locations": [
+        {
+          "page_number": 18,
+          "bbox": {
+            "left": 350.16096000000005,
+            "top": 804.75518,
+            "right": 510.32833799999986,
+            "bottom": 788.3080069415809,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_header",
+      "text": "Master Circular Lending to Micro, Small & Medium Enterprises Sector",
+      "docling_label": "page_header",
+      "item_ref": "#/texts/236",
+      "locations": [
+        {
+          "page_number": 19,
+          "bbox": {
+            "left": 350.16096000000005,
+            "top": 804.75518,
+            "right": 510.32833799999986,
+            "bottom": 788.3080069415809,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_header",
+      "text": "Master Circular Lending to Micro, Small & Medium Enterprises Sector",
+      "docling_label": "page_header",
+      "item_ref": "#/texts/244",
+      "locations": [
+        {
+          "page_number": 20,
+          "bbox": {
+            "left": 350.16096000000005,
+            "top": 804.75518,
+            "right": 510.32833799999986,
+            "bottom": 788.3080069415809,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_header",
+      "text": "Master Circular Lending to Micro, Small & Medium Enterprises Sector",
+      "docling_label": "page_header",
+      "item_ref": "#/texts/247",
+      "locations": [
+        {
+          "page_number": 21,
+          "bbox": {
+            "left": 350.16096000000005,
+            "top": 804.75518,
+            "right": 510.32833799999986,
+            "bottom": 788.3080069415809,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_header",
+      "text": "Master Circular Lending to Micro, Small & Medium Enterprises Sector",
+      "docling_label": "page_header",
+      "item_ref": "#/texts/249",
+      "locations": [
+        {
+          "page_number": 22,
+          "bbox": {
+            "left": 350.16096000000005,
+            "top": 804.75518,
+            "right": 510.32833799999986,
+            "bottom": 788.3080069415809,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_header",
+      "text": "Master Circular Lending to Micro, Small & Medium Enterprises Sector",
+      "docling_label": "page_header",
+      "item_ref": "#/texts/252",
+      "locations": [
+        {
+          "page_number": 23,
+          "bbox": {
+            "left": 350.16096000000005,
+            "top": 804.75518,
+            "right": 510.32833799999986,
+            "bottom": 788.3080069415809,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_header",
+      "text": "Master Circular Lending to Micro, Small & Medium Enterprises Sector",
+      "docling_label": "page_header",
+      "item_ref": "#/texts/254",
+      "locations": [
+        {
+          "page_number": 24,
+          "bbox": {
+            "left": 350.16096000000005,
+            "top": 804.75518,
+            "right": 510.32833799999986,
+            "bottom": 788.3080069415809,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_header",
+      "text": "Master Circular Lending to Micro, Small & Medium Enterprises Sector",
+      "docling_label": "page_header",
+      "item_ref": "#/texts/256",
+      "locations": [
+        {
+          "page_number": 25,
+          "bbox": {
+            "left": 350.16096000000005,
+            "top": 804.75518,
+            "right": 510.32833799999986,
+            "bottom": 788.3080069415809,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_header",
+      "text": "Master Circular Lending to Micro, Small & Medium Enterprises Sector",
+      "docling_label": "page_header",
+      "item_ref": "#/texts/258",
+      "locations": [
+        {
+          "page_number": 26,
+          "bbox": {
+            "left": 350.16096000000005,
+            "top": 804.75518,
+            "right": 510.32833799999986,
+            "bottom": 788.3080069415809,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_header",
+      "text": "Master Circular",
+      "docling_label": "page_header",
+      "item_ref": "#/texts/260",
+      "locations": [
+        {
+          "page_number": 27,
+          "bbox": {
+            "left": 463.86,
+            "top": 804.75518,
+            "right": 510.32833799999986,
+            "bottom": 798.2670469415808,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_header",
+      "text": "Lending to Micro, Small & Medium Enterprises Sector",
+      "docling_label": "page_header",
+      "item_ref": "#/texts/261",
+      "locations": [
+        {
+          "page_number": 27,
+          "bbox": {
+            "left": 350.16096000000005,
+            "top": 794.79614,
+            "right": 510.2924279999999,
+            "bottom": 788.3080069415809,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_header",
+      "text": "Master Circular Lending to Micro, Small & Medium Enterprises Sector",
+      "docling_label": "page_header",
+      "item_ref": "#/texts/263",
+      "locations": [
+        {
+          "page_number": 28,
+          "bbox": {
+            "left": 350.16096000000005,
+            "top": 804.75518,
+            "right": 510.32833799999986,
+            "bottom": 788.3080069415809,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_header",
+      "text": "Master Circular Lending to Micro, Small & Medium Enterprises Sector",
+      "docling_label": "page_header",
+      "item_ref": "#/texts/265",
+      "locations": [
+        {
+          "page_number": 29,
+          "bbox": {
+            "left": 350.16096000000005,
+            "top": 804.75518,
+            "right": 510.32833799999986,
+            "bottom": 788.3080069415809,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_header",
+      "text": "Master Circular Lending to Micro, Small & Medium Enterprises Sector",
+      "docling_label": "page_header",
+      "item_ref": "#/texts/267",
+      "locations": [
+        {
+          "page_number": 30,
+          "bbox": {
+            "left": 350.16096000000005,
+            "top": 804.75518,
+            "right": 510.32833799999986,
+            "bottom": 788.3080069415809,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_header",
+      "text": "Master Circular Lending to Micro, Small & Medium Enterprises Sector",
+      "docling_label": "page_header",
+      "item_ref": "#/texts/269",
+      "locations": [
+        {
+          "page_number": 31,
+          "bbox": {
+            "left": 350.16096000000005,
+            "top": 804.75518,
+            "right": 510.32833799999986,
+            "bottom": 788.3080069415809,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_header",
+      "text": "Master Circular Lending to Micro, Small & Medium Enterprises Sector",
+      "docling_label": "page_header",
+      "item_ref": "#/texts/271",
+      "locations": [
+        {
+          "page_number": 32,
+          "bbox": {
+            "left": 350.16096000000005,
+            "top": 804.75518,
+            "right": 510.32833799999986,
+            "bottom": 788.3080069415809,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_header",
+      "text": "Master Circular Lending to Micro, Small & Medium Enterprises Sector",
+      "docling_label": "page_header",
+      "item_ref": "#/texts/273",
+      "locations": [
+        {
+          "page_number": 33,
+          "bbox": {
+            "left": 350.16096000000005,
+            "top": 804.75518,
+            "right": 510.32833799999986,
+            "bottom": 788.3080069415809,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_header",
+      "text": "Master Circular Lending to Micro, Small & Medium Enterprises Sector",
+      "docling_label": "page_header",
+      "item_ref": "#/texts/275",
+      "locations": [
+        {
+          "page_number": 34,
+          "bbox": {
+            "left": 350.16096000000005,
+            "top": 804.75518,
+            "right": 510.32833799999986,
+            "bottom": 788.3080069415809,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_header",
+      "text": "Master Circular Lending to Micro, Small & Medium Enterprises Sector",
+      "docling_label": "page_header",
+      "item_ref": "#/texts/277",
+      "locations": [
+        {
+          "page_number": 35,
+          "bbox": {
+            "left": 350.16096000000005,
+            "top": 804.75518,
+            "right": 510.32833799999986,
+            "bottom": 788.3080069415809,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_header",
+      "text": "Master Circular Lending to Micro, Small & Medium Enterprises Sector",
+      "docling_label": "page_header",
+      "item_ref": "#/texts/279",
+      "locations": [
+        {
+          "page_number": 36,
+          "bbox": {
+            "left": 350.16096000000005,
+            "top": 804.75518,
+            "right": 510.32833799999986,
+            "bottom": 788.3080069415809,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_header",
+      "text": "Master Circular Lending to Micro, Small & Medium Enterprises Sector",
+      "docling_label": "page_header",
+      "item_ref": "#/texts/281",
+      "locations": [
+        {
+          "page_number": 37,
+          "bbox": {
+            "left": 350.16096000000005,
+            "top": 804.75518,
+            "right": 510.32833799999986,
+            "bottom": 788.3080069415809,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_header",
+      "text": "Master Circular Lending to Micro, Small & Medium Enterprises Sector",
+      "docling_label": "page_header",
+      "item_ref": "#/texts/285",
+      "locations": [
+        {
+          "page_number": 38,
+          "bbox": {
+            "left": 350.16096000000005,
+            "top": 804.75518,
+            "right": 510.32833799999986,
+            "bottom": 788.3080069415809,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_header",
+      "text": "Master Circular Lending to Micro, Small & Medium Enterprises Sector",
+      "docling_label": "page_header",
+      "item_ref": "#/texts/287",
+      "locations": [
+        {
+          "page_number": 39,
+          "bbox": {
+            "left": 350.16096000000005,
+            "top": 804.75518,
+            "right": 510.32833799999986,
+            "bottom": 788.3080069415809,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_header",
+      "text": "Master Circular Lending to Micro, Small & Medium Enterprises Sector",
+      "docling_label": "page_header",
+      "item_ref": "#/texts/289",
+      "locations": [
+        {
+          "page_number": 40,
+          "bbox": {
+            "left": 350.16096000000005,
+            "top": 804.75518,
+            "right": 510.32833799999986,
+            "bottom": 788.3080069415809,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    }
+  ],
+  "footers": [
+    {
+      "type": "page_footer",
+      "text": "Tel No: +91 22 2261 0261| Fax No: +91 22 2262 1011/2265 8273/2265 8276| Email: cgmicrpcd@rbi.org.in",
+      "docling_label": "page_footer",
+      "item_ref": "#/texts/12",
+      "locations": [
+        {
+          "page_number": 1,
+          "bbox": {
+            "left": 97.19688000000005,
+            "top": 54.96018000000004,
+            "right": 498.0857459999999,
+            "bottom": 47.80260926004223,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_footer",
+      "text": "Rural Planning & Credit Department Central Office, 10 th Floor, Central Office Building, Post Box no. 10014 Mumbai - 400 001",
+      "docling_label": "page_footer",
+      "item_ref": "#/texts/15",
+      "locations": [
+        {
+          "page_number": 1,
+          "bbox": {
+            "left": 93.9,
+            "top": 74.29571999999996,
+            "right": 501.2721600000003,
+            "bottom": 57.09930926004233,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_footer",
+      "text": ":: 2 ::",
+      "docling_label": "page_footer",
+      "item_ref": "#/texts/28",
+      "locations": [
+        {
+          "page_number": 2,
+          "bbox": {
+            "left": 282.96,
+            "top": 47.88062000000002,
+            "right": 312.2830080000001,
+            "bottom": 36.68682515856233,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_footer",
+      "text": ":: 3 ::",
+      "docling_label": "page_footer",
+      "item_ref": "#/texts/44",
+      "locations": [
+        {
+          "page_number": 3,
+          "bbox": {
+            "left": 282.96,
+            "top": 47.88062000000002,
+            "right": 312.2830080000001,
+            "bottom": 36.68682515856233,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_footer",
+      "text": ":: 4 ::",
+      "docling_label": "page_footer",
+      "item_ref": "#/texts/54",
+      "locations": [
+        {
+          "page_number": 4,
+          "bbox": {
+            "left": 282.96,
+            "top": 47.88062000000002,
+            "right": 312.2830080000001,
+            "bottom": 36.68682515856233,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_footer",
+      "text": ":: 5 ::",
+      "docling_label": "page_footer",
+      "item_ref": "#/texts/67",
+      "locations": [
+        {
+          "page_number": 5,
+          "bbox": {
+            "left": 282.96,
+            "top": 47.88062000000002,
+            "right": 312.2830080000001,
+            "bottom": 36.68682515856233,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_footer",
+      "text": ":: 6 ::",
+      "docling_label": "page_footer",
+      "item_ref": "#/texts/77",
+      "locations": [
+        {
+          "page_number": 6,
+          "bbox": {
+            "left": 282.96,
+            "top": 47.88062000000002,
+            "right": 312.2830080000001,
+            "bottom": 36.68682515856233,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_footer",
+      "text": ":: 7 ::",
+      "docling_label": "page_footer",
+      "item_ref": "#/texts/87",
+      "locations": [
+        {
+          "page_number": 7,
+          "bbox": {
+            "left": 282.96,
+            "top": 47.88062000000002,
+            "right": 312.2830080000001,
+            "bottom": 36.68682515856233,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_footer",
+      "text": ":: 8 ::",
+      "docling_label": "page_footer",
+      "item_ref": "#/texts/99",
+      "locations": [
+        {
+          "page_number": 8,
+          "bbox": {
+            "left": 282.96,
+            "top": 47.88062000000002,
+            "right": 312.2830080000001,
+            "bottom": 36.68682515856233,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_footer",
+      "text": ":: 9 ::",
+      "docling_label": "page_footer",
+      "item_ref": "#/texts/108",
+      "locations": [
+        {
+          "page_number": 9,
+          "bbox": {
+            "left": 282.96,
+            "top": 47.88062000000002,
+            "right": 312.2830080000001,
+            "bottom": 36.68682515856233,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_footer",
+      "text": ":: 10 ::",
+      "docling_label": "page_footer",
+      "item_ref": "#/texts/115",
+      "locations": [
+        {
+          "page_number": 10,
+          "bbox": {
+            "left": 279.24,
+            "top": 47.88062000000002,
+            "right": 315.9998400000002,
+            "bottom": 36.68682515856233,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_footer",
+      "text": ":: 11 ::",
+      "docling_label": "page_footer",
+      "item_ref": "#/texts/129",
+      "locations": [
+        {
+          "page_number": 11,
+          "bbox": {
+            "left": 279.24,
+            "top": 47.88062000000002,
+            "right": 315.9998400000002,
+            "bottom": 36.68682515856233,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_footer",
+      "text": ":: 12 ::",
+      "docling_label": "page_footer",
+      "item_ref": "#/texts/140",
+      "locations": [
+        {
+          "page_number": 12,
+          "bbox": {
+            "left": 279.24,
+            "top": 47.88062000000002,
+            "right": 315.9998400000002,
+            "bottom": 36.68682515856233,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_footer",
+      "text": ":: 13 ::",
+      "docling_label": "page_footer",
+      "item_ref": "#/texts/160",
+      "locations": [
+        {
+          "page_number": 13,
+          "bbox": {
+            "left": 279.24,
+            "top": 47.88062000000002,
+            "right": 315.9998400000002,
+            "bottom": 36.68682515856233,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_footer",
+      "text": ":: 14 ::",
+      "docling_label": "page_footer",
+      "item_ref": "#/texts/175",
+      "locations": [
+        {
+          "page_number": 14,
+          "bbox": {
+            "left": 279.24,
+            "top": 47.88062000000002,
+            "right": 315.9998400000002,
+            "bottom": 36.68682515856233,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_footer",
+      "text": ":: 15 ::",
+      "docling_label": "page_footer",
+      "item_ref": "#/texts/194",
+      "locations": [
+        {
+          "page_number": 15,
+          "bbox": {
+            "left": 279.24,
+            "top": 47.88062000000002,
+            "right": 315.9998400000002,
+            "bottom": 36.68682515856233,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_footer",
+      "text": ":: 16 ::",
+      "docling_label": "page_footer",
+      "item_ref": "#/texts/209",
+      "locations": [
+        {
+          "page_number": 16,
+          "bbox": {
+            "left": 279.24,
+            "top": 47.88062000000002,
+            "right": 315.9998400000002,
+            "bottom": 36.68682515856233,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_footer",
+      "text": ":: 17 ::",
+      "docling_label": "page_footer",
+      "item_ref": "#/texts/226",
+      "locations": [
+        {
+          "page_number": 17,
+          "bbox": {
+            "left": 279.24,
+            "top": 47.88062000000002,
+            "right": 315.9998400000002,
+            "bottom": 36.68682515856233,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_footer",
+      "text": ":: 18 ::",
+      "docling_label": "page_footer",
+      "item_ref": "#/texts/235",
+      "locations": [
+        {
+          "page_number": 18,
+          "bbox": {
+            "left": 279.24,
+            "top": 47.88062000000002,
+            "right": 315.9998400000002,
+            "bottom": 36.68682515856233,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_footer",
+      "text": ":: 19 ::",
+      "docling_label": "page_footer",
+      "item_ref": "#/texts/243",
+      "locations": [
+        {
+          "page_number": 19,
+          "bbox": {
+            "left": 279.24,
+            "top": 47.88062000000002,
+            "right": 315.9998400000002,
+            "bottom": 36.68682515856233,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_footer",
+      "text": ":: 20 ::",
+      "docling_label": "page_footer",
+      "item_ref": "#/texts/246",
+      "locations": [
+        {
+          "page_number": 20,
+          "bbox": {
+            "left": 279.24,
+            "top": 47.88062000000002,
+            "right": 315.9998400000002,
+            "bottom": 36.68682515856233,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_footer",
+      "text": ":: 21 ::",
+      "docling_label": "page_footer",
+      "item_ref": "#/texts/248",
+      "locations": [
+        {
+          "page_number": 21,
+          "bbox": {
+            "left": 279.24,
+            "top": 47.88062000000002,
+            "right": 315.9998400000002,
+            "bottom": 36.68682515856233,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_footer",
+      "text": ":: 22 ::",
+      "docling_label": "page_footer",
+      "item_ref": "#/texts/251",
+      "locations": [
+        {
+          "page_number": 22,
+          "bbox": {
+            "left": 279.24,
+            "top": 47.88062000000002,
+            "right": 315.9998400000002,
+            "bottom": 36.68682515856233,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_footer",
+      "text": ":: 23 ::",
+      "docling_label": "page_footer",
+      "item_ref": "#/texts/253",
+      "locations": [
+        {
+          "page_number": 23,
+          "bbox": {
+            "left": 279.24,
+            "top": 47.88062000000002,
+            "right": 315.9998400000002,
+            "bottom": 36.68682515856233,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_footer",
+      "text": ":: 24 ::",
+      "docling_label": "page_footer",
+      "item_ref": "#/texts/255",
+      "locations": [
+        {
+          "page_number": 24,
+          "bbox": {
+            "left": 279.24,
+            "top": 47.88062000000002,
+            "right": 315.9998400000002,
+            "bottom": 36.68682515856233,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_footer",
+      "text": ":: 25 ::",
+      "docling_label": "page_footer",
+      "item_ref": "#/texts/257",
+      "locations": [
+        {
+          "page_number": 25,
+          "bbox": {
+            "left": 279.24,
+            "top": 47.88062000000002,
+            "right": 315.9998400000002,
+            "bottom": 36.68682515856233,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_footer",
+      "text": ":: 26 ::",
+      "docling_label": "page_footer",
+      "item_ref": "#/texts/259",
+      "locations": [
+        {
+          "page_number": 26,
+          "bbox": {
+            "left": 279.24,
+            "top": 47.88062000000002,
+            "right": 315.9998400000002,
+            "bottom": 36.68682515856233,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_footer",
+      "text": ":: 27 ::",
+      "docling_label": "page_footer",
+      "item_ref": "#/texts/262",
+      "locations": [
+        {
+          "page_number": 27,
+          "bbox": {
+            "left": 279.24,
+            "top": 47.88062000000002,
+            "right": 315.9998400000002,
+            "bottom": 36.68682515856233,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_footer",
+      "text": ":: 28 ::",
+      "docling_label": "page_footer",
+      "item_ref": "#/texts/264",
+      "locations": [
+        {
+          "page_number": 28,
+          "bbox": {
+            "left": 279.24,
+            "top": 47.88062000000002,
+            "right": 315.9998400000002,
+            "bottom": 36.68682515856233,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_footer",
+      "text": ":: 29 ::",
+      "docling_label": "page_footer",
+      "item_ref": "#/texts/266",
+      "locations": [
+        {
+          "page_number": 29,
+          "bbox": {
+            "left": 279.24,
+            "top": 47.88062000000002,
+            "right": 315.9998400000002,
+            "bottom": 36.68682515856233,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_footer",
+      "text": ":: 30 ::",
+      "docling_label": "page_footer",
+      "item_ref": "#/texts/268",
+      "locations": [
+        {
+          "page_number": 30,
+          "bbox": {
+            "left": 279.24,
+            "top": 47.88062000000002,
+            "right": 315.9998400000002,
+            "bottom": 36.68682515856233,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_footer",
+      "text": ":: 31 ::",
+      "docling_label": "page_footer",
+      "item_ref": "#/texts/270",
+      "locations": [
+        {
+          "page_number": 31,
+          "bbox": {
+            "left": 279.24,
+            "top": 47.88062000000002,
+            "right": 315.9998400000002,
+            "bottom": 36.68682515856233,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_footer",
+      "text": ":: 32 ::",
+      "docling_label": "page_footer",
+      "item_ref": "#/texts/272",
+      "locations": [
+        {
+          "page_number": 32,
+          "bbox": {
+            "left": 279.24,
+            "top": 47.88062000000002,
+            "right": 315.9998400000002,
+            "bottom": 36.68682515856233,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_footer",
+      "text": ":: 33 ::",
+      "docling_label": "page_footer",
+      "item_ref": "#/texts/274",
+      "locations": [
+        {
+          "page_number": 33,
+          "bbox": {
+            "left": 279.24,
+            "top": 47.88062000000002,
+            "right": 315.9998400000002,
+            "bottom": 36.68682515856233,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_footer",
+      "text": ":: 34 ::",
+      "docling_label": "page_footer",
+      "item_ref": "#/texts/276",
+      "locations": [
+        {
+          "page_number": 34,
+          "bbox": {
+            "left": 279.24,
+            "top": 47.88062000000002,
+            "right": 315.9998400000002,
+            "bottom": 36.68682515856233,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_footer",
+      "text": ":: 35 ::",
+      "docling_label": "page_footer",
+      "item_ref": "#/texts/278",
+      "locations": [
+        {
+          "page_number": 35,
+          "bbox": {
+            "left": 279.24,
+            "top": 47.88062000000002,
+            "right": 315.9998400000002,
+            "bottom": 36.68682515856233,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_footer",
+      "text": ":: 36 ::",
+      "docling_label": "page_footer",
+      "item_ref": "#/texts/280",
+      "locations": [
+        {
+          "page_number": 36,
+          "bbox": {
+            "left": 279.24,
+            "top": 47.88062000000002,
+            "right": 315.9998400000002,
+            "bottom": 36.68682515856233,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_footer",
+      "text": ":: 37 ::",
+      "docling_label": "page_footer",
+      "item_ref": "#/texts/284",
+      "locations": [
+        {
+          "page_number": 37,
+          "bbox": {
+            "left": 279.24,
+            "top": 47.88062000000002,
+            "right": 315.9998400000002,
+            "bottom": 36.68682515856233,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_footer",
+      "text": ":: 38 ::",
+      "docling_label": "page_footer",
+      "item_ref": "#/texts/286",
+      "locations": [
+        {
+          "page_number": 38,
+          "bbox": {
+            "left": 279.24,
+            "top": 47.88062000000002,
+            "right": 315.9998400000002,
+            "bottom": 36.68682515856233,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_footer",
+      "text": ":: 39 ::",
+      "docling_label": "page_footer",
+      "item_ref": "#/texts/288",
+      "locations": [
+        {
+          "page_number": 39,
+          "bbox": {
+            "left": 279.24,
+            "top": 47.88062000000002,
+            "right": 315.9998400000002,
+            "bottom": 36.68682515856233,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    },
+    {
+      "type": "page_footer",
+      "text": ":: 40 ::",
+      "docling_label": "page_footer",
+      "item_ref": "#/texts/290",
+      "locations": [
+        {
+          "page_number": 40,
+          "bbox": {
+            "left": 279.24,
+            "top": 47.88062000000002,
+            "right": 315.9998400000002,
+            "bottom": 36.68682515856233,
+            "coordinate_origin": "CoordOrigin.BOTTOMLEFT"
+          }
+        }
+      ]
+    }
+  ]
+}

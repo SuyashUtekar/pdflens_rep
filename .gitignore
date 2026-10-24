@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.env
+dist/
+build/
+*.egg-info/
+artifacts/
+*.pdf
+*.zip
+rbi_docs/*
+docs*
+Docling_Header_Footer_Furniture_Extraction.ipynb

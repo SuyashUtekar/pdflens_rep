@@ -1,0 +1,39 @@
+PDF Layout & Metadata Test Fixture — Quick Reference
+
+Purpose Use this synthetic 5-page PDF to test PDF parsing and metadata
+extraction. It is a test fixture, not an official RBI document.
+
+Fixture contents - Page 1: Title, purpose, element list, and a small
+table. - Page 2: Section headings, objective text, footnote references,
+callout, and two footnotes. - Page 3: Sample data table and a
+vector-drawn chart. - Page 4: Two-column layout, lists, notes, and
+hyperlinks. - Page 5: Appendix checklist and a final table.
+
+Expected extraction fields - Body text - Section headings - Repeating
+page headers - Page footers and page numbers - Footnotes and their
+markers - Hyperlink anchor text and target URLs - Tables and table
+snapshots - Images or chart regions, with artifact paths - Page numbers,
+dimensions, and bounding boxes
+
+Important validation checks 1. Section headings must be classified as
+headings, not running page headers. 2. The repeating header “INTELLIGENT
+SEARCH | PDF LAYOUT TEST” should be detected on pages 2–5. 3. The footer
+“Synthetic test fixture — not an official RBI document” and page numbers
+should be captured. 4. Footnote markers should be associated with their
+corresponding footnote text. 5. Hyperlinks should preserve both the link
+text and target URL. 6. Table and image/chart artifact paths should
+point to files that exist in the output package. 7. Extraction status
+should report only fields that were actually captured; use partial
+success when requested fields are missing.
+
+Known issue in the reviewed metadata The supplied metadata JSON
+classified section headings as “header”, while the repeating page
+header, footer, and page numbers were missing. The extracted_fields list
+therefore overstated header/footer extraction. Check the raw parser
+output and the custom JSON mapping to determine where this was
+introduced.
+
+Suggested use Run the fixture through each candidate parser using the
+same settings, compare the resulting metadata against these checks, and
+record missing, incorrect, or extra elements before testing real-world
+PDFs.

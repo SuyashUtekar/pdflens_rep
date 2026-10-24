@@ -1,0 +1,877 @@
+{
+  "schema_version": "1.0",
+  "document": {
+    "source_filename": "PDF_Layout_Metadata_Test_Fixture.pdf",
+    "source_sha256": "4abd92e8eef18df6a3da2eb7db2bff71e759b978add78a1b55d71af85866c165",
+    "page_count": 5,
+    "title": null,
+    "language": null
+  },
+  "processing": {
+    "parser_name": "docling",
+    "parser_version": "2.141.0",
+    "model_version": null,
+    "status": "success",
+    "requested_fields": [
+      "body_text",
+      "heading",
+      "header",
+      "footer",
+      "footnote",
+      "hyperlink",
+      "image",
+      "table"
+    ],
+    "extracted_fields": [
+      "body_text",
+      "footnote",
+      "header",
+      "hyperlink",
+      "image",
+      "table"
+    ],
+    "warnings": [
+      "Parser mapping and coordinate convention require corpus validation.",
+      "Header/footer detection requires repeated text in page bands; footnotes use markers or native labels."
+    ],
+    "errors": []
+  },
+  "pages": [
+    {
+      "page_number": 1,
+      "width_pt": 595.2756,
+      "height_pt": 841.8898,
+      "rotation_degrees": 0,
+      "coordinate_system": "normalized_top_left_0_1",
+      "body_text": "A synthetic document for testing Docling, MinerU, and PDFLens-compatible extraction\nThis document deliberately includes common PDF elements so a parser can be evaluated against a known test fixture. It is synthetic and is not an official regulatory publication.\n[[TABLE: tables/page-0001-table-0001.png]]\nReference link: Reserve Bank of India website. This link tests hyperlink extraction.",
+      "elements": [
+        {
+          "element_id": "p0001-e0001",
+          "type": "header",
+          "text": "PDF Layout & Metadata Test Fixture",
+          "reading_order": 0,
+          "bbox": {
+            "x0": 0.16937833500986768,
+            "y0": 0.16297905022723883,
+            "x1": 0.8306216313922492,
+            "y1": 0.18824957850778098
+          },
+          "confidence": null,
+          "target_uri": null,
+          "artifact_path": null,
+          "attributes": {
+            "parser_label": "section_header"
+          }
+        },
+        {
+          "element_id": "p0001-e0002",
+          "type": "body_text",
+          "text": "A synthetic document for testing Docling, MinerU, and PDFLens-compatible extraction",
+          "reading_order": 1,
+          "bbox": {
+            "x0": 0.14825534592716383,
+            "y0": 0.20647167835980437,
+            "x1": 0.8517446204749529,
+            "y1": 0.21855758318962898
+          },
+          "confidence": null,
+          "target_uri": null,
+          "artifact_path": null,
+          "attributes": {
+            "parser_label": "text"
+          }
+        },
+        {
+          "element_id": "p0001-e0003",
+          "type": "header",
+          "text": "Purpose",
+          "reading_order": 2,
+          "bbox": {
+            "x0": 0.09579364583396328,
+            "y0": 0.2981857007888682,
+            "x1": 0.19661249344001333,
+            "y1": 0.3146664801022653
+          },
+          "confidence": null,
+          "target_uri": null,
+          "artifact_path": null,
+          "attributes": {
+            "parser_label": "section_header"
+          }
+        },
+        {
+          "element_id": "p0001-e0004",
+          "type": "body_text",
+          "text": "This document deliberately includes common PDF elements so a parser can be evaluated against a known test fixture. It is synthetic and is not an official regulatory publication.",
+          "reading_order": 3,
+          "bbox": {
+            "x0": 0.09579364583396328,
+            "y0": 0.32705883834202537,
+            "x1": 0.9016539901853873,
+            "y1": 0.35238875681829157
+          },
+          "confidence": null,
+          "target_uri": null,
+          "artifact_path": null,
+          "attributes": {
+            "parser_label": "text"
+          }
+        },
+        {
+          "element_id": "p0001-e0005",
+          "type": "header",
+          "text": "Elements included",
+          "reading_order": 4,
+          "bbox": {
+            "x0": 0.09579364583396328,
+            "y0": 0.3670783278286541,
+            "x1": 0.3184468169029605,
+            "y1": 0.3835591071420512
+          },
+          "confidence": null,
+          "target_uri": null,
+          "artifact_path": null,
+          "attributes": {
+            "parser_label": "section_header"
+          }
+        },
+        {
+          "element_id": "p0001-e0006",
+          "type": "table",
+          "text": null,
+          "reading_order": 5,
+          "bbox": {
+            "x0": 0.13137828903710283,
+            "y0": 0.39139225250751564,
+            "x1": 0.8679693849294777,
+            "y1": 0.6412865283087145
+          },
+          "confidence": null,
+          "target_uri": null,
+          "artifact_path": "tables/page-0001-table-0001.png",
+          "attributes": {
+            "parser_label": "table"
+          }
+        },
+        {
+          "element_id": "p0001-e0007",
+          "type": "body_text",
+          "text": "Reference link: Reserve Bank of India website. This link tests hyperlink extraction.",
+          "reading_order": 6,
+          "bbox": {
+            "x0": 0.09579364583396328,
+            "y0": 0.6715313571918795,
+            "x1": 0.6436474466616809,
+            "y1": 0.6814198247799177
+          },
+          "confidence": null,
+          "target_uri": null,
+          "artifact_path": null,
+          "attributes": {
+            "parser_label": "text"
+          }
+        },
+        {
+          "element_id": "p0001-link-0001",
+          "type": "hyperlink",
+          "text": "Reference link: Reserve Bank of India website. This link tests hyperlink extraction.",
+          "reading_order": 7,
+          "bbox": {
+            "x0": 0.20082563437842907,
+            "y0": 0.6685167108569317,
+            "x1": 0.4050234882800504,
+            "y1": 0.6813449931333057
+          },
+          "confidence": null,
+          "target_uri": "https://www.rbi.org.in/",
+          "artifact_path": null,
+          "attributes": {
+            "source": "pdf_link_annotation"
+          }
+        }
+      ]
+    },
+    {
+      "page_number": 2,
+      "width_pt": 595.2756,
+      "height_pt": 841.8898,
+      "rotation_degrees": 0,
+      "coordinate_system": "normalized_top_left_0_1",
+      "body_text": "This section tests whether the parser distinguishes section headings from ordinary paragraphs and preserves reading order.\nThe downstream metadata layer should retain page number, element type, reading order, bounding box where available, extracted text, and any related asset path.\nA layout-aware parser should recognize this statement has a footnote marker 1 . Another claim has a second marker 2 .\nValidation rule: A successful parse is not enough. Verify each element's page reference and that every asset path in the JSON resolves to a file in the package.",
+      "elements": [
+        {
+          "element_id": "p0002-e0008",
+          "type": "header",
+          "text": "1. Overview and Document Structure",
+          "reading_order": 0,
+          "bbox": {
+            "x0": 0.09579364583396328,
+            "y0": 0.08622529932064749,
+            "x1": 0.5368918531181186,
+            "y1": 0.10270607863404456
+          },
+          "confidence": null,
+          "target_uri": null,
+          "artifact_path": null,
+          "attributes": {
+            "parser_label": "section_header"
+          }
+        },
+        {
+          "element_id": "p0002-e0009",
+          "type": "body_text",
+          "text": "This section tests whether the parser distinguishes section headings from ordinary paragraphs and preserves reading order.",
+          "reading_order": 1,
+          "bbox": {
+            "x0": 0.09579364583396328,
+            "y0": 0.11509843687380467,
+            "x1": 0.88063851432849,
+            "y1": 0.14042835535007087
+          },
+          "confidence": null,
+          "target_uri": null,
+          "artifact_path": null,
+          "attributes": {
+            "parser_label": "text"
+          }
+        },
+        {
+          "element_id": "p0002-e0010",
+          "type": "header",
+          "text": "1.1 Processing Objectives",
+          "reading_order": 2,
+          "bbox": {
+            "x0": 0.09579364583396328,
+            "y0": 0.153778083544901,
+            "x1": 0.3248388141559977,
+            "y1": 0.1658639883747256
+          },
+          "confidence": null,
+          "target_uri": null,
+          "artifact_path": null,
+          "attributes": {
+            "parser_label": "section_header"
+          }
+        },
+        {
+          "element_id": "p0002-e0011",
+          "type": "body_text",
+          "text": "The downstream metadata layer should retain page number, element type, reading order, bounding box where available, extracted text, and any related asset path.",
+          "reading_order": 3,
+          "bbox": {
+            "x0": 0.09579364583396328,
+            "y0": 0.17686424042671622,
+            "x1": 0.902530894933373,
+            "y1": 0.2021941589029824
+          },
+          "confidence": null,
+          "target_uri": null,
+          "artifact_path": null,
+          "attributes": {
+            "parser_label": "text"
+          }
+        },
+        {
+          "element_id": "p0002-e0012",
+          "type": "header",
+          "text": "Key objectives",
+          "reading_order": 4,
+          "bbox": {
+            "x0": 0.09579364583396328,
+            "y0": 0.21554388709781255,
+            "x1": 0.22520093213966774,
+            "y1": 0.22762979192763716
+          },
+          "confidence": null,
+          "target_uri": null,
+          "artifact_path": null,
+          "attributes": {
+            "parser_label": "section_header"
+          }
+        },
+        {
+          "element_id": "p0002-e0018",
+          "type": "header",
+          "text": "1.2 Example Footnote References",
+          "reading_order": 5,
+          "bbox": {
+            "x0": 0.09579364583396328,
+            "y0": 0.3521413372629054,
+            "x1": 0.3915474109807291,
+            "y1": 0.36422724209273
+          },
+          "confidence": null,
+          "target_uri": null,
+          "artifact_path": null,
+          "attributes": {
+            "parser_label": "section_header"
+          }
+        },
+        {
+          "element_id": "p0002-e0019",
+          "type": "body_text",
+          "text": "A layout-aware parser should recognize this statement has a footnote marker 1 . Another claim has a second marker 2 .",
+          "reading_order": 6,
+          "bbox": {
+            "x0": 0.09579364583396328,
+            "y0": 0.37141749430863763,
+            "x1": 0.8755978239323107,
+            "y1": 0.3851159617327589
+          },
+          "confidence": null,
+          "target_uri": null,
+          "artifact_path": null,
+          "attributes": {
+            "parser_label": "text"
+          }
+        },
+        {
+          "element_id": "p0002-e0020",
+          "type": "footnote",
+          "text": "1 First test footnote: deliberately placed near the lower part of the content area.",
+          "reading_order": 7,
+          "bbox": {
+            "x0": 0.09579364583396328,
+            "y0": 0.41312794144791876,
+            "x1": 0.5348986587053121,
+            "y1": 0.4245433309680199
+          },
+          "confidence": null,
+          "target_uri": null,
+          "artifact_path": null,
+          "attributes": {
+            "parser_label": "footnote"
+          }
+        },
+        {
+          "element_id": "p0002-e0021",
+          "type": "footnote",
+          "text": "2 Second test footnote: distinguish this from the repeating page footer.",
+          "reading_order": 8,
+          "bbox": {
+            "x0": 0.09579364583396328,
+            "y0": 0.4309450001651048,
+            "x1": 0.48659330232920667,
+            "y1": 0.44236038968520586
+          },
+          "confidence": null,
+          "target_uri": null,
+          "artifact_path": null,
+          "attributes": {
+            "parser_label": "footnote"
+          }
+        },
+        {
+          "element_id": "p0002-e0022",
+          "type": "header",
+          "text": "1.3 Validation Callout",
+          "reading_order": 9,
+          "bbox": {
+            "x0": 0.09579364583396328,
+            "y0": 0.4519216172948051,
+            "x1": 0.282688589957324,
+            "y1": 0.46400752212462965
+          },
+          "confidence": null,
+          "target_uri": null,
+          "artifact_path": null,
+          "attributes": {
+            "parser_label": "section_header"
+          }
+        },
+        {
+          "element_id": "p0002-e0023",
+          "type": "body_text",
+          "text": "Validation rule: A successful parse is not enough. Verify each element's page reference and that every asset path in the JSON resolves to a file in the package.",
+          "reading_order": 10,
+          "bbox": {
+            "x0": 0.09579364583396328,
+            "y0": 0.4750077741766203,
+            "x1": 0.9046750261559529,
+            "y1": 0.5003376926528864
+          },
+          "confidence": null,
+          "target_uri": null,
+          "artifact_path": null,
+          "attributes": {
+            "parser_label": "text"
+          }
+        }
+      ]
+    },
+    {
+      "page_number": 3,
+      "width_pt": 595.2756,
+      "height_pt": 841.8898,
+      "rotation_degrees": 0,
+      "coordinate_system": "normalized_top_left_0_1",
+      "body_text": "The table contains mixed text and numeric cells. The chart is drawn using vector shapes, rather than inserted as a single image, to test chart-region detection.\n[[TABLE: tables/page-0003-table-0001.png]]\n[[IMAGE: images/page-0003-image-0001.png]]",
+      "elements": [
+        {
+          "element_id": "p0003-e0024",
+          "type": "header",
+          "text": "2. Sample Data Table and Chart",
+          "reading_order": 0,
+          "bbox": {
+            "x0": 0.09579364583396328,
+            "y0": 0.08622529932064749,
+            "x1": 0.47248471128331143,
+            "y1": 0.10270607863404456
+          },
+          "confidence": null,
+          "target_uri": null,
+          "artifact_path": null,
+          "attributes": {
+            "parser_label": "section_header"
+          }
+        },
+        {
+          "element_id": "p0003-e0025",
+          "type": "body_text",
+          "text": "The table contains mixed text and numeric cells. The chart is drawn using vector shapes, rather than inserted as a single image, to test chart-region detection.",
+          "reading_order": 1,
+          "bbox": {
+            "x0": 0.09579364583396328,
+            "y0": 0.11509843687380467,
+            "x1": 0.9016539901853875,
+            "y1": 0.14042835535007087
+          },
+          "confidence": null,
+          "target_uri": null,
+          "artifact_path": null,
+          "attributes": {
+            "parser_label": "text"
+          }
+        },
+        {
+          "element_id": "p0003-e0026",
+          "type": "table",
+          "text": null,
+          "reading_order": 2,
+          "bbox": {
+            "x0": 0.13097617130151532,
+            "y0": 0.14897936823249147,
+            "x1": 0.8679923243170615,
+            "y1": 0.28607759453055415
+          },
+          "confidence": null,
+          "target_uri": null,
+          "artifact_path": "tables/page-0003-table-0001.png",
+          "attributes": {
+            "parser_label": "table"
+          }
+        },
+        {
+          "element_id": "p0003-e0027",
+          "type": "header",
+          "text": "Illustrative quarterly metric",
+          "reading_order": 3,
+          "bbox": {
+            "x0": 0.10923279905979683,
+            "y0": 0.31426607140269425,
+            "x1": 0.3033311293122043,
+            "y1": 0.32415453899073254
+          },
+          "confidence": null,
+          "target_uri": null,
+          "artifact_path": null,
+          "attributes": {
+            "parser_label": "section_header"
+          }
+        },
+        {
+          "element_id": "p0003-e0028",
+          "type": "image",
+          "text": null,
+          "reading_order": 4,
+          "bbox": {
+            "x0": 0.10631053079694709,
+            "y0": 0.3282458742554,
+            "x1": 0.34111678360292574,
+            "y1": 0.47507286524829273
+          },
+          "confidence": null,
+          "target_uri": null,
+          "artifact_path": "images/page-0003-image-0001.png",
+          "attributes": {
+            "parser_label": "picture"
+          }
+        }
+      ]
+    },
+    {
+      "page_number": 4,
+      "width_pt": 595.2756,
+      "height_pt": 841.8898,
+      "rotation_degrees": 0,
+      "coordinate_system": "normalized_top_left_0_1",
+      "body_text": "This page intentionally uses two parallel text columns. Check that the parser does not interleave the columns line by line.\nThe left column discusses page layout. Content is grouped in a narrow region and should normally be read from top to bottom before moving to the next column.\nVisit the RBI Master Directions portal for a destination URL extraction test.\nA second hyperlink points to Docling documentation. These are test fixtures, not endorsements.\nThe right column contains separate text. A layout-aware parser should identify its position and preserve a reasonable reading sequence rather than mixing its lines with the left column.\nThe column boundary is visual and may not be represented by a literal line in the PDF.",
+      "elements": [
+        {
+          "element_id": "p0004-e0030",
+          "type": "header",
+          "text": "3. Two-Column Layout Test",
+          "reading_order": 0,
+          "bbox": {
+            "x0": 0.09579364583396328,
+            "y0": 0.08622529932064749,
+            "x1": 0.4248093152146669,
+            "y1": 0.10270607863404456
+          },
+          "confidence": null,
+          "target_uri": null,
+          "artifact_path": null,
+          "attributes": {
+            "parser_label": "section_header"
+          }
+        },
+        {
+          "element_id": "p0004-e0031",
+          "type": "body_text",
+          "text": "This page intentionally uses two parallel text columns. Check that the parser does not interleave the columns line by line.",
+          "reading_order": 1,
+          "bbox": {
+            "x0": 0.09579364583396328,
+            "y0": 0.11509843687380467,
+            "x1": 0.9025006568386148,
+            "y1": 0.12498690446184296
+          },
+          "confidence": null,
+          "target_uri": null,
+          "artifact_path": null,
+          "attributes": {
+            "parser_label": "text"
+          }
+        },
+        {
+          "element_id": "p0004-e0032",
+          "type": "header",
+          "text": "3.1 Left Column",
+          "reading_order": 2,
+          "bbox": {
+            "x0": 0.14677248655916686,
+            "y0": 0.14190004440011034,
+            "x1": 0.2853822330362608,
+            "y1": 0.15398594922993492
+          },
+          "confidence": null,
+          "target_uri": null,
+          "artifact_path": null,
+          "attributes": {
+            "parser_label": "section_header"
+          }
+        },
+        {
+          "element_id": "p0004-e0033",
+          "type": "body_text",
+          "text": "The left column discusses page layout. Content is grouped in a narrow region and should normally be read from top to bottom before moving to the next column.",
+          "reading_order": 3,
+          "bbox": {
+            "x0": 0.14677248655916686,
+            "y0": 0.16973741693984182,
+            "x1": 0.48656084677416633,
+            "y1": 0.22595023719256377
+          },
+          "confidence": null,
+          "target_uri": null,
+          "artifact_path": null,
+          "attributes": {
+            "parser_label": "text"
+          }
+        },
+        {
+          "element_id": "p0004-e0034",
+          "type": "header",
+          "text": "Left-column list",
+          "reading_order": 4,
+          "bbox": {
+            "x0": 0.14677248655916686,
+            "y0": 0.24523898495978927,
+            "x1": 0.2843474182378717,
+            "y1": 0.2573248897896139
+          },
+          "confidence": null,
+          "target_uri": null,
+          "artifact_path": null,
+          "attributes": {
+            "parser_label": "section_header"
+          }
+        },
+        {
+          "element_id": "p0004-e0038",
+          "type": "header",
+          "text": "3.3 Hyperlink and Reference Test",
+          "reading_order": 5,
+          "bbox": {
+            "x0": 0.09579364583396328,
+            "y0": 0.34977511308487175,
+            "x1": 0.3864287734958397,
+            "y1": 0.3618610179146963
+          },
+          "confidence": null,
+          "target_uri": null,
+          "artifact_path": null,
+          "attributes": {
+            "parser_label": "section_header"
+          }
+        },
+        {
+          "element_id": "p0004-e0039",
+          "type": "body_text",
+          "text": "Visit the RBI Master Directions portal for a destination URL extraction test.",
+          "reading_order": 6,
+          "bbox": {
+            "x0": 0.09579364583396328,
+            "y0": 0.37286126996668695,
+            "x1": 0.5915472093934306,
+            "y1": 0.38274973755472524
+          },
+          "confidence": null,
+          "target_uri": null,
+          "artifact_path": null,
+          "attributes": {
+            "parser_label": "text"
+          }
+        },
+        {
+          "element_id": "p0004-e0040",
+          "type": "body_text",
+          "text": "A second hyperlink points to Docling documentation. These are test fixtures, not endorsements.",
+          "reading_order": 7,
+          "bbox": {
+            "x0": 0.09579364583396328,
+            "y0": 0.3954295443417892,
+            "x1": 0.7344524452203319,
+            "y1": 0.4053180119298274
+          },
+          "confidence": null,
+          "target_uri": null,
+          "artifact_path": null,
+          "attributes": {
+            "parser_label": "text"
+          }
+        },
+        {
+          "element_id": "p0004-e0041",
+          "type": "header",
+          "text": "3.2 Right Column",
+          "reading_order": 8,
+          "bbox": {
+            "x0": 0.5134391196279505,
+            "y0": 0.14190004440011034,
+            "x1": 0.6653905854699907,
+            "y1": 0.15398594922993492
+          },
+          "confidence": null,
+          "target_uri": null,
+          "artifact_path": null,
+          "attributes": {
+            "parser_label": "section_header"
+          }
+        },
+        {
+          "element_id": "p0004-e0042",
+          "type": "body_text",
+          "text": "The right column contains separate text. A layout-aware parser should identify its position and preserve a reasonable reading sequence rather than mixing its lines with the left column.",
+          "reading_order": 9,
+          "bbox": {
+            "x0": 0.5134391196279505,
+            "y0": 0.16973741693984182,
+            "x1": 0.8529222094774253,
+            "y1": 0.22595023719256377
+          },
+          "confidence": null,
+          "target_uri": null,
+          "artifact_path": null,
+          "attributes": {
+            "parser_label": "text"
+          }
+        },
+        {
+          "element_id": "p0004-e0043",
+          "type": "header",
+          "text": "Right-column note",
+          "reading_order": 10,
+          "bbox": {
+            "x0": 0.5134391196279505,
+            "y0": 0.24523898495978927,
+            "x1": 0.6766626752381586,
+            "y1": 0.2573248897896139
+          },
+          "confidence": null,
+          "target_uri": null,
+          "artifact_path": null,
+          "attributes": {
+            "parser_label": "section_header"
+          }
+        },
+        {
+          "element_id": "p0004-e0044",
+          "type": "body_text",
+          "text": "The column boundary is visual and may not be represented by a literal line in the PDF.",
+          "reading_order": 11,
+          "bbox": {
+            "x0": 0.5134391196279505,
+            "y0": 0.27307635749952075,
+            "x1": 0.8260405432374516,
+            "y1": 0.29840627597578695
+          },
+          "confidence": null,
+          "target_uri": null,
+          "artifact_path": null,
+          "attributes": {
+            "parser_label": "text"
+          }
+        },
+        {
+          "element_id": "p0004-link-0001",
+          "type": "hyperlink",
+          "text": "Visit the RBI Master Directions portal for a destination URL extraction test.",
+          "reading_order": 12,
+          "bbox": {
+            "x0": 0.1537751925326689,
+            "y0": 0.3698466236317391,
+            "x1": 0.3428086083152072,
+            "y1": 0.38267490590811293
+          },
+          "confidence": null,
+          "target_uri": "https://www.rbi.org.in/Scripts/BS_ViewMasDirections.aspx",
+          "artifact_path": null,
+          "attributes": {
+            "source": "pdf_link_annotation"
+          }
+        },
+        {
+          "element_id": "p0004-link-0002",
+          "type": "hyperlink",
+          "text": "A second hyperlink points to Docling documentation. These are test fixtures, not endorsements.",
+          "reading_order": 13,
+          "bbox": {
+            "x0": 0.2890755139300183,
+            "y0": 0.3924148980068413,
+            "x1": 0.4428513448224654,
+            "y1": 0.40524318028321527
+          },
+          "confidence": null,
+          "target_uri": "https://docling-project.github.io/docling/",
+          "artifact_path": null,
+          "attributes": {
+            "source": "pdf_link_annotation"
+          }
+        }
+      ]
+    },
+    {
+      "page_number": 5,
+      "width_pt": 595.2756,
+      "height_pt": 841.8898,
+      "rotation_degrees": 0,
+      "coordinate_system": "normalized_top_left_0_1",
+      "body_text": "Use this appendix to check whether the extraction pipeline preserves each element and its relationship to the source PDF.\n[[TABLE: tables/page-0005-table-0001.png]]\nEnd of synthetic test fixture. This document is not an official RBI publication and contains no official RBI data.",
+      "elements": [
+        {
+          "element_id": "p0005-e0045",
+          "type": "header",
+          "text": "Appendix A - Expected Metadata Fields",
+          "reading_order": 0,
+          "bbox": {
+            "x0": 0.09579364583396328,
+            "y0": 0.08622529932064749,
+            "x1": 0.5830805428611553,
+            "y1": 0.10270607863404456
+          },
+          "confidence": null,
+          "target_uri": null,
+          "artifact_path": null,
+          "attributes": {
+            "parser_label": "section_header"
+          }
+        },
+        {
+          "element_id": "p0005-e0046",
+          "type": "body_text",
+          "text": "Use this appendix to check whether the extraction pipeline preserves each element and its relationship to the source PDF.",
+          "reading_order": 1,
+          "bbox": {
+            "x0": 0.09579364583396328,
+            "y0": 0.11509843687380467,
+            "x1": 0.8731092287337167,
+            "y1": 0.14042835535007087
+          },
+          "confidence": null,
+          "target_uri": null,
+          "artifact_path": null,
+          "attributes": {
+            "parser_label": "text"
+          }
+        },
+        {
+          "element_id": "p0005-e0047",
+          "type": "table",
+          "text": null,
+          "reading_order": 2,
+          "bbox": {
+            "x0": 0.13155210098164194,
+            "y0": 0.14886289764186839,
+            "x1": 0.8681359003054215,
+            "y1": 0.3640009139326009
+          },
+          "confidence": null,
+          "target_uri": null,
+          "artifact_path": "tables/page-0005-table-0001.png",
+          "attributes": {
+            "parser_label": "table"
+          }
+        },
+        {
+          "element_id": "p0005-e0048",
+          "type": "header",
+          "text": "A.1 Acceptance Checklist",
+          "reading_order": 3,
+          "bbox": {
+            "x0": 0.09579364583396328,
+            "y0": 0.3903569089446149,
+            "x1": 0.32069955496244096,
+            "y1": 0.40244281377443936
+          },
+          "confidence": null,
+          "target_uri": null,
+          "artifact_path": null,
+          "attributes": {
+            "parser_label": "section_header"
+          }
+        },
+        {
+          "element_id": "p0005-e0056",
+          "type": "body_text",
+          "text": "End of synthetic test fixture. This document is not an official RBI publication and contains no official RBI data.",
+          "reading_order": 4,
+          "bbox": {
+            "x0": 0.09579364583396328,
+            "y0": 0.5920158434037329,
+            "x1": 0.8243805390309972,
+            "y1": 0.6019043109917712
+          },
+          "confidence": null,
+          "target_uri": null,
+          "artifact_path": null,
+          "attributes": {
+            "parser_label": "text"
+          }
+        }
+      ]
+    }
+  ],
+  "artifacts": {
+    "docx_path": "document.docx",
+    "image_paths": [
+      "images/page-0003-image-0001.png"
+    ],
+    "table_snapshot_paths": [
+      "tables/page-0001-table-0001.png",
+      "tables/page-0003-table-0001.png",
+      "tables/page-0005-table-0001.png"
+    ],
+    "manifest_path": "manifest.json"
+  }
+}
