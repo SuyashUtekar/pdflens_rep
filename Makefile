@@ -9,7 +9,7 @@ PORT ?= 8000
 # Keep every uv command on the same project environment.
 UV_ENV = UV_PROJECT_ENVIRONMENT=$(VENV)
 
-.PHONY: help install run dev health clean
+.PHONY: help install run dev health test inventory clean
 
 help: ## Show available project commands
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "} {printf "\033[36m%-12s\033[0m %s\n", $$1, $$2}'
@@ -25,6 +25,12 @@ dev: ## Run the API server with automatic reload
 
 health: ## Check the local health endpoint
 	curl --fail --silent --show-error http://$(HOST):$(PORT)/healthz
+
+test: ## Run the focused regression tests
+	$(UV_ENV) $(UV) run python -m unittest discover -s tests -v
+
+inventory: ## Print a source-text inventory of PDFs under rbi_docs
+	$(UV_ENV) $(UV) run python scripts/inventory_pdf_corpus.py rbi_docs
 
 clean: ## Remove the configured virtual environment
 	rm -rf $(VENV)

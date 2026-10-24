@@ -24,6 +24,13 @@ class ExtractionField(StrEnum):
     OTHER = "other"
 
 
+class FieldExtractionStatus(StrEnum):
+    EXTRACTED = "extracted"
+    NOT_DETECTED = "not_detected"
+    NOT_REQUESTED = "not_requested"
+    FAILED = "failed"
+
+
 class BoundingBox(BaseModel):
     model_config = ConfigDict(extra="forbid")
     x0: float = Field(ge=0, le=1)
@@ -59,6 +66,13 @@ class Page(BaseModel):
     rotation_degrees: int = 0
     coordinate_system: str = "normalized_top_left_0_1"
     body_text: str = ""
+    physical_page_index: int | None = Field(default=None, ge=1)
+    printed_page_label: str | None = None
+    source_text_char_count: int = Field(default=0, ge=0)
+    body_text_char_count: int = Field(default=0, ge=0)
+    body_text_to_source_text_ratio: float | None = Field(default=None, ge=0)
+    field_status: dict[str, FieldExtractionStatus] = Field(default_factory=dict)
+    warnings: list[str] = Field(default_factory=list)
     elements: list[Element] = Field(default_factory=list)
 
 
@@ -73,6 +87,7 @@ class DocumentInfo(BaseModel):
 class ProcessingInfo(BaseModel):
     parser_name: str
     parser_version: str
+    adapter_version: str = "0.2.0"
     model_version: str | None = None
     status: str = "success"
     requested_fields: list[ExtractionField]
@@ -91,7 +106,7 @@ class ArtifactInfo(BaseModel):
 
 
 class Metadata(BaseModel):
-    schema_version: str = "1.0"
+    schema_version: str = "1.1"
     document: DocumentInfo
     processing: ProcessingInfo
     pages: list[Page]

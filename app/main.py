@@ -14,7 +14,7 @@ from starlette.concurrency import run_in_threadpool
 from app.artifacts.package import build_package
 from app.parsers.docling_adapter import DoclingAdapter, ParserExecutionError, ParserUnavailableError
 from app.schemas.models import (DocumentInfo, ExtractionField, ExtractionRequest,
-                                 Metadata, ProcessingInfo)
+                                 FieldExtractionStatus, Metadata, ProcessingInfo)
 from app.security.pdf import MAX_UPLOAD_BYTES, safe_filename, validate_pdf
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
@@ -83,6 +83,47 @@ async def extract(file: UploadFile = File(...),
         selected = set(request.extraction_fields)
         for page in parsed.pages:
             page.elements = [element for element in page.elements if element.type in selected]
+            body_parts = []
+            for element in sorted(page.elements, key=lambda item: item.reading_order):
+                if element.type == ExtractionField.BODY_TEXT and element.text:
+                    body_parts.append(element.text)
+                elif element.type in {ExtractionField.IMAGE, ExtractionField.TABLE}:
+                    asset_name = element.artifact_path or element.element_id
+                    label = "IMAGE" if element.type == ExtractionField.IMAGE else "TABLE"
+                    body_parts.append(f"[[{label}: {asset_name}]]")
+            page.body_text = "\n".join(body_parts)
+            page.body_text_char_count = len(page.body_text.strip())
+            page.body_text_to_source_text_ratio = (
+                page.body_text_char_count / page.source_text_char_count
+                if page.source_text_char_count else None
+            )
+            page.field_status = {
+                field.value: (
+                    FieldExtractionStatus.NOT_REQUESTED if field not in selected else
+                    FieldExtractionStatus.EXTRACTED
+                    if any(element.type == field for element in page.elements) else
+                    FieldExtractionStatus.NOT_DETECTED
+                )
+                for field in ExtractionField
+            }
+            if ExtractionField.PAGE_NUMBER in selected and not page.printed_page_label:
+                page.warnings.append("PAGE_LABEL_NOT_DETECTED")
+            page_text = "\n".join(element.text or "" for element in page.elements)
+            if "\ufffd" in page_text or any(
+                ord(character) < 32 and character not in "\n\r\t" for character in page_text
+            ) or any(marker in page_text for marker in ("Ã", "Â", "â€", "ï¿½")):
+                page.warnings.append("UNICODE_SUSPECT")
+            for warning in page.warnings:
+                detail = f"page {page.page_number}: {warning}"
+                if detail not in parsed.warnings:
+                    parsed.warnings.append(detail)
+                logger.warning("extraction_quality request_id=%s page_index=%d code=%s",
+                               request_id, page.physical_page_index or page.page_number, warning)
+        quality_warnings = any(page.warnings for page in parsed.pages) or any(
+            not warning.startswith(("Parser mapping and coordinate convention",
+                                    "Headers and footers use Docling furniture-tree"))
+            for warning in parsed.warnings
+        )
         metadata = Metadata(
             document=DocumentInfo(source_filename=filename, source_sha256=source_hash,
                                   page_count=len(parsed.pages), title=parsed.title),
@@ -91,7 +132,7 @@ async def extract(file: UploadFile = File(...),
                 requested_fields=request.extraction_fields,
                 extracted_fields=sorted(parsed.extracted_fields, key=lambda x: x.value),
                 missing_fields=sorted(selected - parsed.extracted_fields, key=lambda x: x.value),
-                status="partial_success" if selected - parsed.extracted_fields else "success",
+                status="partial_success" if selected - parsed.extracted_fields or quality_warnings else "success",
                 warnings=parsed.warnings),
             pages=parsed.pages,
         )

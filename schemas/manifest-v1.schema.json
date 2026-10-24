@@ -3,12 +3,44 @@
   "$id": "https://example.invalid/schemas/manifest-v1.schema.json",
   "title": "PDFLens package manifest v1",
   "type": "object",
-  "required": ["schema_version", "metadata_schema_version", "members"],
+  "required": [
+    "schema_version",
+    "metadata_schema_version",
+    "members"
+  ],
   "properties": {
-    "schema_version": {"const": "1.0"},
-    "metadata_schema_version": {"const": "1.0"},
-    "members": {"type": "array", "items": {"type": "object", "required": ["path", "size_bytes", "sha256"],
-      "properties": {"path": {"type": "string"}, "size_bytes": {"type": "integer", "minimum": 0}, "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}}, "additionalProperties": false}}
+    "schema_version": {
+      "const": "1.0"
+    },
+    "metadata_schema_version": {
+      "type": "string",
+      "pattern": "^1\\.1$"
+    },
+    "members": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "size_bytes",
+          "sha256"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          }
+        },
+        "additionalProperties": false
+      }
+    }
   },
   "additionalProperties": false
 }

@@ -7,7 +7,9 @@ Feasibility implementation for a PDF extraction service that produces page-orien
 - FastAPI `POST /v1/extract` multipart endpoint (`file`, comma-separated `extraction_fields`, `output_mode`, `ocr_mode`).
 - PDF signature and upload-size checks; opaque request ID and SHA-256 source digest.
 - Optional Docling adapter with a project-owned canonical metadata model.
-- Docling furniture-tree headers and footers, including explicitly labeled text items; page numbers and footnotes are handled separately.
+- Docling furniture-tree headers and footers, supplemented by repeated text at consistent page edges; page labels and footnotes are tracked separately.
+- Per-page source-text counts, normalized body-text counts/ratios, explicit field statuses, and a provenance-marked pypdf fallback when Docling emits no body text for a page with a text layer.
+- Table cell structures when Docling exposes them; otherwise table snapshots are labeled `visual_only`. Repeated identical image snapshots are flagged without removing page-specific files.
 - Output ZIP: the original PDF, `document.docx`, `metadata.json`, `manifest.json`, plus detected crops under `images/` and `tables/` when requested and available. The DOCX is built from an in-memory structured HTML representation that preserves headings, reading order, page boundaries, links, and asset references; no HTML file is written to disk or included in the ZIP.
 - DOCX is an editable text reconstruction. Image and table snapshots are separate PNG artifacts linked from their canonical metadata elements.
 - `/healthz` liveness endpoint.
@@ -24,6 +26,8 @@ uvicorn app.main:app --reload
 ```
 
 Each extraction ZIP includes the original PDF, `document.docx`, and `metadata.json`; the intermediate HTML used to format the DOCX is kept in memory and is not emitted as a file.
+
+Run `make test` for the focused regression suite. Run `make inventory` to inspect the PDFs under `rbi_docs`; this reports page and text-layer availability and does not assess semantic extraction quality.
 
 Swagger UI is available at `/docs`. Example:
 
