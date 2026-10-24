@@ -4,6 +4,7 @@ from importlib.util import find_spec
 from importlib.metadata import PackageNotFoundError, version
 from io import BytesIO
 import re
+from threading import Lock
 
 from app.parsers.base import ParsedAsset, ParsedDocument
 from app.schemas.models import BoundingBox, Element, ExtractionField, Page
@@ -25,23 +26,54 @@ class ParserExecutionError(RuntimeError):
 class DoclingAdapter:
     """Thin Docling adapter. Native labels are retained for later mapping review."""
 
-    def parse(self, pdf_path: str, requested: set[ExtractionField]) -> ParsedDocument:
-        try:
+    def __init__(self) -> None:
+        self._converter_lock = Lock()
+        self._inference_lock = Lock()
+        self._converters: dict[bool, object] = {}
+
+    @staticmethod
+    def check_available() -> bool:
+        """Return whether Docling can be imported without loading its ML models."""
+        return find_spec("docling") is not None
+
+    def _get_converter(self, generate_assets: bool):
+        """Reuse model pipelines across requests; callers serialize model inference."""
+        converter = self._converters.get(generate_assets)
+        if converter is not None:
+            return converter
+        with self._converter_lock:
+            converter = self._converters.get(generate_assets)
+            if converter is not None:
+                return converter
             from docling.datamodel.base_models import InputFormat
             from docling.datamodel.pipeline_options import PdfPipelineOptions
             from docling.document_converter import DocumentConverter, PdfFormatOption
-        except ImportError as exc:
-            raise ParserUnavailableError("Docling is not installed in the active environment.") from exc
 
-        try:
             options = PdfPipelineOptions()
-            if requested.intersection({ExtractionField.IMAGE, ExtractionField.TABLE}):
+            if generate_assets:
                 options.generate_page_images = True
                 options.generate_picture_images = True
             converter = DocumentConverter(
                 format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=options)}
             )
-            doc = converter.convert(pdf_path).document
+            self._converters[generate_assets] = converter
+            return converter
+
+    def parse(self, pdf_path: str, requested: set[ExtractionField]) -> ParsedDocument:
+        try:
+            # Import check above gives the public, specific unavailable error.
+            if not self.check_available():
+                raise ImportError("Docling is not installed")
+        except ImportError as exc:
+            raise ParserUnavailableError("Docling is not installed in the active environment.") from exc
+
+        try:
+            generate_assets = bool(requested.intersection(
+                {ExtractionField.IMAGE, ExtractionField.TABLE}
+            ))
+            converter = self._get_converter(generate_assets)
+            with self._inference_lock:
+                doc = converter.convert(pdf_path).document
         except Exception as exc:
             raise ParserExecutionError("conversion", type(exc).__name__) from exc
         page_items = getattr(doc, "pages", {})

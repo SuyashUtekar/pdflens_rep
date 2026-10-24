@@ -12,7 +12,9 @@ Feasibility implementation for a PDF extraction service that produces page-orien
 - Table cell structures when Docling exposes them; otherwise table snapshots are labeled `visual_only`. Repeated identical image snapshots are flagged without removing page-specific files.
 - Output ZIP: the original PDF, `document.docx`, `metadata.json`, `manifest.json`, plus detected crops under `images/` and `tables/` when requested and available. The DOCX is built from an in-memory structured HTML representation that preserves headings, reading order, page boundaries, links, and asset references; no HTML file is written to disk or included in the ZIP.
 - DOCX is an editable text reconstruction. Image and table snapshots are separate PNG artifacts linked from their canonical metadata elements.
-- `/healthz` liveness endpoint.
+- `/healthz` liveness and `/readyz` parser-package readiness endpoints. Readiness does not download or warm model weights.
+- Lazily initialized Docling converters are reused across requests. Model inference is serialized per process, and excess uploads receive HTTP 503 instead of accumulating in an unbounded application queue.
+- Completion logs include request ID, input/output bytes, page count, final quality status, and elapsed time; document text is never logged.
 
 The endpoint and archive names are provisional until compared with sanitized PDFLens requests, responses, and ZIPs. It has no authentication, durable job state, object storage, OCR language policy, or production worker isolation. Do not expose it to untrusted networks. Docling must be configured to produce page images for table crops; output paths and cropping need validation against a reviewed corpus.
 
@@ -47,6 +49,7 @@ Running headers and footers are collected by recursively resolving references in
 |---|---:|---|
 | `PDFLENS_MAX_UPLOAD_BYTES` | 52428800 | Maximum uploaded PDF size |
 | `PDFLENS_MAX_PAGES` | 500 | Maximum parsed page count |
+| `PDFLENS_MAX_CONCURRENT_EXTRACTIONS` | 1 | In-flight request limit per process; excess requests receive 503 with `Retry-After` |
 | `LOG_LEVEL` | `INFO` | Application log level |
 
 ## Repository map
@@ -61,4 +64,4 @@ Running headers and footers are collected by recursively resolving references in
 
 ## Development status and next gates
 
-See [architecture](docs/architecture.md), [API contract](docs/api-contract.md), [data mapping](docs/data-mapping.md), [operations runbook](docs/operations-runbook.md), and [license inventory](docs/license-inventory.md). The next project gate is to obtain representative PDFs and matching PDFLens outputs, then benchmark Docling and MinerU and replace all provisional contract choices with evidence.
+See [architecture](docs/architecture.md), [API contract](docs/api-contract.md), [data mapping](docs/data-mapping.md), [operations runbook](docs/operations-runbook.md), and [license inventory](docs/license-inventory.md). This upgrade improves local service reliability; it does not claim production approval or PDFLens parity without corpus baselines and deployment decisions.

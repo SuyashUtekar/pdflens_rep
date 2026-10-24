@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 import os
 import tempfile
+import time
 import uuid
+from collections.abc import AsyncIterator
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 from starlette.concurrency import run_in_threadpool
 
@@ -22,6 +25,26 @@ logger = logging.getLogger("pdflens")
 app = FastAPI(title="PDFLens Replacement", version="0.1.0",
               description="Feasibility API; legacy compatibility is pending contract discovery.")
 MAX_PAGES = int(os.getenv("PDFLENS_MAX_PAGES", "500"))
+MAX_CONCURRENT_EXTRACTIONS = int(os.getenv("PDFLENS_MAX_CONCURRENT_EXTRACTIONS", "1"))
+if MAX_PAGES < 1 or MAX_CONCURRENT_EXTRACTIONS < 1:
+    raise RuntimeError("PDFLENS_MAX_PAGES and PDFLENS_MAX_CONCURRENT_EXTRACTIONS must be positive")
+EXTRACTION_SLOTS = asyncio.Semaphore(MAX_CONCURRENT_EXTRACTIONS)
+PARSER = DoclingAdapter()
+
+
+async def extraction_slot() -> AsyncIterator[None]:
+    """Reject excess model-heavy work promptly instead of building an unbounded queue."""
+    try:
+        await asyncio.wait_for(EXTRACTION_SLOTS.acquire(), timeout=0.01)
+    except TimeoutError as exc:
+        raise HTTPException(503, detail={"code": "CAPACITY_EXCEEDED",
+                                         "request_id": str(uuid.uuid4()),
+                                         "message": "The extraction service is at capacity; retry shortly."},
+                            headers={"Retry-After": "5"}) from exc
+    try:
+        yield
+    finally:
+        EXTRACTION_SLOTS.release()
 
 
 @app.get("/healthz")
@@ -29,12 +52,23 @@ def health() -> dict[str, str]:
     return {"status": "ok", "service": "pdflens-replacement"}
 
 
+@app.get("/readyz")
+def readiness() -> Response:
+    if not PARSER.check_available():
+        return Response(status_code=503, content='{"status":"not_ready","reason":"parser_unavailable"}',
+                        media_type="application/json")
+    return Response(content='{"status":"ready","service":"pdflens-replacement"}',
+                    media_type="application/json")
+
+
 @app.post("/v1/extract")
 async def extract(file: UploadFile = File(...),
                   extraction_fields: str = Form("body_text,heading,header,footer,page_number,footnote,hyperlink,image,table"),
                   output_mode: str = Form("legacy_compatible"),
-                  ocr_mode: str = Form("auto")) -> Response:
+                  ocr_mode: str = Form("auto"),
+                  _slot: None = Depends(extraction_slot)) -> Response:
     request_id = str(uuid.uuid4())
+    started_at = time.perf_counter()
     try:
         fields = [ExtractionField(field.strip()) for field in extraction_fields.split(",") if field.strip()]
         request = ExtractionRequest(extraction_fields=fields, output_mode=output_mode, ocr_mode=ocr_mode)
@@ -62,7 +96,7 @@ async def extract(file: UploadFile = File(...),
         source.write_bytes(data)
         try:
             parsed = await run_in_threadpool(
-                DoclingAdapter().parse, str(source), set(request.extraction_fields)
+                PARSER.parse, str(source), set(request.extraction_fields)
             )
         except ParserUnavailableError as exc:
             logger.warning("parser unavailable request_id=%s", request_id)
@@ -146,7 +180,11 @@ async def extract(file: UploadFile = File(...),
             raise HTTPException(500, detail={"code": "ARTIFACT_GENERATION_FAILED",
                                              "request_id": request_id,
                                              "message": "Could not generate the output package."}) from exc
-        return Response(content=output.read_bytes(), media_type="application/zip",
+        response_data = output.read_bytes()
+        logger.info("extraction_complete request_id=%s file_bytes=%d page_count=%d status=%s duration_ms=%d output_bytes=%d",
+                    request_id, len(data), len(parsed.pages), metadata.processing.status,
+                    round((time.perf_counter() - started_at) * 1000), len(response_data))
+        return Response(content=response_data, media_type="application/zip",
                         headers={"Content-Disposition": f'attachment; filename="{archive_filename}"',
                                  "X-Request-ID": request_id})
 
