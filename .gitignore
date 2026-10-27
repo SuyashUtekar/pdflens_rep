@@ -15,5 +15,6 @@ app/artifacts/*
 *.pdf
 *.zip
 rbi_docs/*
+outputs/*
 docs*
 Docling_Header_Footer_Furniture_Extraction.ipynb
