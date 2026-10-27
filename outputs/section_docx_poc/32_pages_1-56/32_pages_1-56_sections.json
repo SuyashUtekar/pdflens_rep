@@ -1,0 +1,404 @@
+[
+  {
+    "title": "भारतीय �रज़वर् ब� क Reserve Bank of India",
+    "level": 1,
+    "start_page": 1,
+    "end_page": 1
+  },
+  {
+    "title": "Table of Contents",
+    "level": 2,
+    "start_page": 1,
+    "end_page": 1
+  },
+  {
+    "title": "Chapter I - Preliminary",
+    "level": 1,
+    "start_page": 4,
+    "end_page": 4
+  },
+  {
+    "title": "A. Short Title and Commencement",
+    "level": 3,
+    "start_page": 4,
+    "end_page": 4
+  },
+  {
+    "title": "B. Applicability",
+    "level": 3,
+    "start_page": 4,
+    "end_page": 4
+  },
+  {
+    "title": "C. Definitions",
+    "level": 3,
+    "start_page": 6,
+    "end_page": 6
+  },
+  {
+    "title": "Chapter II - Role of the Board",
+    "level": 1,
+    "start_page": 11,
+    "end_page": 11
+  },
+  {
+    "title": "A. Board Approved Policies",
+    "level": 3,
+    "start_page": 11,
+    "end_page": 11
+  },
+  {
+    "title": "B. Board Level Committees",
+    "level": 3,
+    "start_page": 11,
+    "end_page": 11
+  },
+  {
+    "title": "Chapter III - Information Technology Governance and Oversight",
+    "level": 1,
+    "start_page": 12,
+    "end_page": 12
+  },
+  {
+    "title": "A. IT Governance Framework",
+    "level": 3,
+    "start_page": 12,
+    "end_page": 12
+  },
+  {
+    "title": "B. Information Security Policy and Cybersecurity Policy",
+    "level": 3,
+    "start_page": 12,
+    "end_page": 12
+  },
+  {
+    "title": "C. IT Strategy Committee of the Board",
+    "level": 3,
+    "start_page": 13,
+    "end_page": 13
+  },
+  {
+    "title": "D. Senior Management and IT Steering Committee",
+    "level": 3,
+    "start_page": 14,
+    "end_page": 14
+  },
+  {
+    "title": "E. Information Security Committee",
+    "level": 3,
+    "start_page": 15,
+    "end_page": 15
+  },
+  {
+    "title": "F. Head of IT Function",
+    "level": 3,
+    "start_page": 16,
+    "end_page": 16
+  },
+  {
+    "title": "G. Chief Information Security Officer",
+    "level": 3,
+    "start_page": 17,
+    "end_page": 17
+  },
+  {
+    "title": "H. Information Technology Project Management",
+    "level": 3,
+    "start_page": 18,
+    "end_page": 18
+  },
+  {
+    "title": "I. IT Architecture",
+    "level": 2,
+    "start_page": 18,
+    "end_page": 18
+  },
+  {
+    "title": "J. IT Services Management",
+    "level": 3,
+    "start_page": 19,
+    "end_page": 19
+  },
+  {
+    "title": "Chapter IV - IT and Information Security Risk Management",
+    "level": 1,
+    "start_page": 20,
+    "end_page": 20
+  },
+  {
+    "title": "A. Periodic Review of IT related Risks",
+    "level": 3,
+    "start_page": 20,
+    "end_page": 20
+  },
+  {
+    "title": "B. IT and Information Security Risk Management Framework",
+    "level": 3,
+    "start_page": 20,
+    "end_page": 20
+  },
+  {
+    "title": "C. Risk Identification, Assessment, and Documentation",
+    "level": 3,
+    "start_page": 20,
+    "end_page": 20
+  },
+  {
+    "title": "Chapter V - Baseline Cybersecurity and Resilience Requirements",
+    "level": 1,
+    "start_page": 22,
+    "end_page": 22
+  },
+  {
+    "title": "A. Inventory Management of Information Assets",
+    "level": 3,
+    "start_page": 22,
+    "end_page": 22
+  },
+  {
+    "title": "B. Data Leak Prevention Strategy",
+    "level": 3,
+    "start_page": 22,
+    "end_page": 22
+  },
+  {
+    "title": "C. Data Migration Controls",
+    "level": 3,
+    "start_page": 23,
+    "end_page": 23
+  },
+  {
+    "title": "D. Preventing Execution of Unauthorised Software",
+    "level": 3,
+    "start_page": 23,
+    "end_page": 23
+  },
+  {
+    "title": "E. Physical and Environmental Controls",
+    "level": 3,
+    "start_page": 24,
+    "end_page": 24
+  },
+  {
+    "title": "F. Capacity Management",
+    "level": 3,
+    "start_page": 24,
+    "end_page": 24
+  },
+  {
+    "title": "G. Secure Configuration",
+    "level": 3,
+    "start_page": 25,
+    "end_page": 25
+  },
+  {
+    "title": "H. Network Management and Security",
+    "level": 3,
+    "start_page": 25,
+    "end_page": 25
+  },
+  {
+    "title": "I. Application Security Life Cycle",
+    "level": 2,
+    "start_page": 26,
+    "end_page": 26
+  },
+  {
+    "title": "J. Maintenance, Monitoring, and Analysis of Audit Logs",
+    "level": 3,
+    "start_page": 28,
+    "end_page": 28
+  },
+  {
+    "title": "L. User Access Control / Management",
+    "level": 3,
+    "start_page": 30,
+    "end_page": 30
+  },
+  {
+    "title": "M. Controls on Teleworking",
+    "level": 3,
+    "start_page": 31,
+    "end_page": 31
+  },
+  {
+    "title": "N. Authentication Framework for Customers",
+    "level": 3,
+    "start_page": 32,
+    "end_page": 32
+  },
+  {
+    "title": "O. Secure Mail and Messaging Systems",
+    "level": 3,
+    "start_page": 32,
+    "end_page": 32
+  },
+  {
+    "title": "P. Removable Media",
+    "level": 3,
+    "start_page": 33,
+    "end_page": 33
+  },
+  {
+    "title": "Q. Third-Party Arrangements",
+    "level": 3,
+    "start_page": 33,
+    "end_page": 33
+  },
+  {
+    "title": "R. Cryptographic Controls",
+    "level": 3,
+    "start_page": 39,
+    "end_page": 39
+  },
+  {
+    "title": "S. Straight Through Processing",
+    "level": 3,
+    "start_page": 39,
+    "end_page": 39
+  },
+  {
+    "title": "T. Continuous Surveillance",
+    "level": 3,
+    "start_page": 40,
+    "end_page": 40
+  },
+  {
+    "title": "U. Advanced Real-time Threat Defence and Management",
+    "level": 3,
+    "start_page": 40,
+    "end_page": 40
+  },
+  {
+    "title": "V. Anti-Phishing",
+    "level": 3,
+    "start_page": 40,
+    "end_page": 40
+  },
+  {
+    "title": "W. Vulnerability Assessment and Penetration Test",
+    "level": 3,
+    "start_page": 40,
+    "end_page": 40
+  },
+  {
+    "title": "X. Red Teaming Exercises",
+    "level": 3,
+    "start_page": 42,
+    "end_page": 42
+  },
+  {
+    "title": "Y. Business Continuity and Disaster Recovery",
+    "level": 3,
+    "start_page": 43,
+    "end_page": 43
+  },
+  {
+    "title": "Z. Cyber Incident Response and Recovery Management",
+    "level": 3,
+    "start_page": 44,
+    "end_page": 44
+  },
+  {
+    "title": "Z.1 Responding to Cyber-Incidents",
+    "level": 3,
+    "start_page": 44,
+    "end_page": 44
+  },
+  {
+    "title": "Z.2 Recovery from Cyber Incidents",
+    "level": 3,
+    "start_page": 46,
+    "end_page": 46
+  },
+  {
+    "title": "Z.3 Cyber Crisis Management Plan",
+    "level": 3,
+    "start_page": 46,
+    "end_page": 46
+  },
+  {
+    "title": "AA. Metrics",
+    "level": 2,
+    "start_page": 47,
+    "end_page": 47
+  },
+  {
+    "title": "BB. User / Employee / Management Awareness",
+    "level": 2,
+    "start_page": 47,
+    "end_page": 47
+  },
+  {
+    "title": "CC. Customer Education and Awareness",
+    "level": 2,
+    "start_page": 48,
+    "end_page": 48
+  },
+  {
+    "title": "DD. Risk based Transaction Monitoring",
+    "level": 2,
+    "start_page": 49,
+    "end_page": 49
+  },
+  {
+    "title": "EE. Forensics",
+    "level": 2,
+    "start_page": 49,
+    "end_page": 49
+  },
+  {
+    "title": "Chapter VI - Cyber Security Operations Centre",
+    "level": 1,
+    "start_page": 50,
+    "end_page": 50
+  },
+  {
+    "title": "A. Governance",
+    "level": 3,
+    "start_page": 50,
+    "end_page": 50
+  },
+  {
+    "title": "B. Capabilities",
+    "level": 3,
+    "start_page": 50,
+    "end_page": 50
+  },
+  {
+    "title": "C. Staff Capabilities",
+    "level": 3,
+    "start_page": 52,
+    "end_page": 52
+  },
+  {
+    "title": "Chapter VII - Information Systems Audit",
+    "level": 1,
+    "start_page": 54,
+    "end_page": 54
+  },
+  {
+    "title": "Chapter VIII - Repeal and Other Provisions",
+    "level": 1,
+    "start_page": 55,
+    "end_page": 55
+  },
+  {
+    "title": "A. Repeal and Saving",
+    "level": 3,
+    "start_page": 55,
+    "end_page": 55
+  },
+  {
+    "title": "B. Application of Other Laws Not barred",
+    "level": 3,
+    "start_page": 55,
+    "end_page": 55
+  },
+  {
+    "title": "C. Interpretations",
+    "level": 3,
+    "start_page": 56,
+    "end_page": 56
+  }
+]
