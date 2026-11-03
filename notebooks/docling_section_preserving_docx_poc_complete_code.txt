@@ -1,0 +1,1394 @@
+from __future__ import annotations
+
+from collections import Counter, defaultdict
+from pathlib import Path
+from types import SimpleNamespace
+import json
+import statistics
+import re
+import sys
+import unicodedata
+
+import pdfplumber
+import pymupdf as fitz
+from PIL import Image
+from docling.datamodel.base_models import InputFormat
+from docling.datamodel.pipeline_options import PdfPipelineOptions
+from docling.document_converter import DocumentConverter, PdfFormatOption
+from docx import Document
+from docx.enum.section import WD_SECTION
+from docx.oxml.ns import qn
+from docx.shared import Inches, Pt, RGBColor
+from pypdf import PdfReader, PdfWriter
+
+PROJECT_ROOT = next(
+    (parent for parent in (Path.cwd(), *Path.cwd().parents)
+     if (parent / "pyproject.toml").is_file()),
+    Path.cwd(),
+)
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+from chunking_strategy.sectionwise_chunking import chunk_docx, save_chunks_xlsx
+
+PDF_PATH = Path("/Users/suyashutekar/Projects/pdflens_replacement/rbi_docs/combined_heading_reconstruction_fixture.pdf")
+START_PAGE = 1  # 1-based, inclusive
+END_PAGE = None  # 1-based, inclusive; None selects through the final page
+
+# Optional conversion controls. None lets Docling choose its configured defaults.
+DO_OCR = None
+ACCELERATOR_DEVICE = None
+DOCLING_ARTIFACTS_PATH = None
+METADATA_DPI = 150
+META_DPI = METADATA_DPI
+META_METHOD = "ExportAsFixedFormat2"
+HF_REPEAT_FRAC = 0.12
+HF_REPEAT_MIN_FRAC = 0.30
+HF_TIGHT_FRAC = 0.08
+HF_SHORT_RATIO = 0.30
+HF_GAP_MULT = 2.0
+HF_GAP_TOP_FRAC = 0.27
+USE_HF_POSITION = True
+
+def prepare_selected_pdf(project_root: Path, pdf_path: Path, start_page: int, end_page: int | None):
+    """Validate the requested page range, derive output paths, and write the trimmed PDF."""
+    if not pdf_path.is_file():
+        raise FileNotFoundError(f"PDF not found: {pdf_path}. Set PDF_PATH to your PDF.")
+
+    source_reader = PdfReader(str(pdf_path))
+    source_page_count = len(source_reader.pages)
+    selected_end_page = source_page_count if end_page is None else end_page
+    if not (1 <= start_page <= selected_end_page <= source_page_count):
+        raise ValueError(
+            f"Invalid page range {start_page}-{selected_end_page}; PDF has {source_page_count} pages. "
+            "Page numbers are 1-based and inclusive."
+        )
+
+    page_range_label = f"pages_{start_page}-{selected_end_page}"
+    output_dir = project_root / "outputs" / "section_docx_poc" / f"{pdf_path.stem}_{page_range_label}"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    paths = {
+        "trimmed_pdf": output_dir / f"{pdf_path.stem}_{page_range_label}.pdf",
+        "docx": output_dir / f"{pdf_path.stem}_{page_range_label}_sections.docx",
+        "section_index": output_dir / f"{pdf_path.stem}_{page_range_label}_sections.json",
+        "markdown": output_dir / f"{pdf_path.stem}_{page_range_label}_layout.md",
+        "metadata": output_dir / f"{pdf_path.stem}_{page_range_label}_meta.json",
+        "output_dir": output_dir,
+        "table_screenshots": output_dir / "table_screenshots",
+        "image_crops": output_dir / "image_crops",
+    }
+    paths["chunk_json"] = output_dir / f"{paths['docx'].stem}_chunks.json"
+    paths["chunk_xlsx"] = output_dir / f"{paths['docx'].stem}_chunks.xlsx"
+
+    writer = PdfWriter()
+    for source_index in range(start_page - 1, selected_end_page):
+        writer.add_page(source_reader.pages[source_index])
+    with paths["trimmed_pdf"].open("wb") as trimmed_pdf_file:
+        writer.write(trimmed_pdf_file)
+
+    print(f"Input PDF: {pdf_path}")
+    print(f"Selected source pages: {start_page}-{selected_end_page} of {source_page_count}")
+    print(f"Trimmed PDF: {paths['trimmed_pdf']}")
+    print(f"DOCX: {paths['docx']}")
+    return selected_end_page, source_page_count, paths
+
+END_PAGE, SOURCE_PAGE_COUNT, OUTPUT_PATHS = prepare_selected_pdf(
+    PROJECT_ROOT, PDF_PATH, START_PAGE, END_PAGE
+)
+TRIMMED_PDF_PATH = OUTPUT_PATHS["trimmed_pdf"]
+DOCX_PATH = OUTPUT_PATHS["docx"]
+SECTION_INDEX_PATH = OUTPUT_PATHS["section_index"]
+MARKDOWN_PATH = OUTPUT_PATHS["markdown"]
+CHUNK_JSON_PATH = OUTPUT_PATHS["chunk_json"]
+CHUNK_XLSX_PATH = OUTPUT_PATHS["chunk_xlsx"]
+OUTPUT_DIR = OUTPUT_PATHS["output_dir"]
+META_JSON_PATH = OUTPUT_PATHS["metadata"]
+TABLE_SCREENSHOT_DIR = OUTPUT_PATHS["table_screenshots"]
+IMAGE_CROP_DIR = OUTPUT_PATHS["image_crops"]
+
+def convert_pdf_with_docling(
+    trimmed_pdf_path: Path,
+    start_page: int,
+    end_page: int,
+    do_ocr: bool | None = None,
+    accelerator_device: str | None = None,
+    artifacts_path: Path | None = None,
+):
+    """Configure the Docling PDF pipeline, convert the trimmed PDF, and return its document."""
+    pipeline_options = PdfPipelineOptions(
+        artifacts_path=str(artifacts_path) if artifacts_path is not None else None
+    )
+    if do_ocr is not None:
+        pipeline_options.do_ocr = do_ocr
+    if accelerator_device is not None:
+        pipeline_options.accelerator_options.device = accelerator_device
+    pipeline_options.do_table_structure = True
+    pipeline_options.generate_parsed_pages = True
+    pipeline_options.heading_hierarchy_options.enabled = True
+    pipeline_options.generate_page_images = True
+    pipeline_options.generate_picture_images = True
+    converter = DocumentConverter(
+        format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)}
+    )
+    conversion = converter.convert(str(trimmed_pdf_path))
+    document = conversion.document
+    print(f"Selected pages processed: {document.num_pages()} (source pages {start_page}-{end_page})")
+    print(f"Text items: {len(document.texts)} | Tables: {len(document.tables)} | Pictures: {len(document.pictures)}")
+    return document
+
+doc = convert_pdf_with_docling(
+    TRIMMED_PDF_PATH, START_PAGE, END_PAGE,
+    do_ocr=DO_OCR,
+    accelerator_device=ACCELERATOR_DEVICE,
+    artifacts_path=DOCLING_ARTIFACTS_PATH,
+)
+
+def label_name(item):
+    label = getattr(item, "label", "")
+    return str(getattr(label, "name", getattr(label, "value", label))).upper()
+
+def first_page_number(item):
+    provenance = getattr(item, "prov", None) or []
+    return getattr(provenance[0], "page_no", None) if provenance else None
+
+def preview_detected_headings(document, start_page: int, limit: int = 80):
+    """Print Docling title/section detections before PDF-line reconstruction and return the records."""
+    heading_preview = []
+    for item, tree_level in document.iterate_items():
+        if label_name(item) in {"SECTION_HEADER", "TITLE"}:
+            heading_preview.append({
+                "page": (first_page_number(item) + start_page - 1)
+                        if first_page_number(item) is not None else None,
+                "level": getattr(item, "level", tree_level or 1),
+                "label": label_name(item),
+                "text": getattr(item, "text", ""),
+                "top": float(getattr((getattr(item, "prov", None) or [None])[0], "bbox", None).t)
+                       if (getattr(item, "prov", None) or []) else 0,
+            })
+
+    heading_preview.sort(key=lambda heading: (heading["page"] or 0, -heading["top"]))
+    print(f"Docling raw title/section heading elements before PDF-line reconstruction: {len(heading_preview)}")
+    for heading in heading_preview[:80]:
+        level = max(1, min(int(heading["level"] or 1), 9))
+        print(f"source p.{heading['page']} | {'  ' * (level - 1)}{heading['text']}")
+
+    return heading_preview
+
+heading_preview = preview_detected_headings(doc, START_PAGE)
+
+def normalize(value):
+    value = unicodedata.normalize("NFKC", str(value or "")).casefold()
+    value = re.sub(r"\(?cid:\d+\)?", " ", value)
+    value = re.sub(r"^\s*\d+[.)]\s+", " ", value)
+    return re.sub(r"[^\w]+", " ", value).strip()
+
+
+def clean_pdf_text(value):
+    return re.sub(r"\(?cid:\d+\)?", "•", str(value or "")).strip()
+
+
+def is_parenthetical_margin_label(line, page_width):
+    """Recognize short parenthetical labels aligned in a page's right margin."""
+    text = str(line.get("text", "") or "").strip()
+    if not re.fullmatch(r"\(\s*[^()]{2,48}\s*\)", text):
+        return False
+    inner = text[1:-1].strip()
+    # Preserve ordinary list markers such as (a), (i), and (1).
+    if re.fullmatch(r"(?:[a-z]|[ivxlcdm]+|\d+)", inner, flags=re.IGNORECASE):
+        return False
+    words = line.get("words", [])
+    if not words:
+        return False
+    left = min(word["x0"] for word in words)
+    right = max(word["x1"] for word in words)
+    return left >= page_width * 0.65 and right >= page_width * 0.82
+
+
+def is_recurring_margin_label_item(text, bbox, page_data):
+    """Skip a Docling item only when it matches a repeated PDF margin label in place."""
+    if bbox is None:
+        return False
+    label_key = normalize(text)
+    if not label_key or label_key not in page_data["recurring_margin_label_keys"]:
+        return False
+
+    item_left = float(bbox.l)
+    item_right = float(bbox.r)
+    item_top = page_data["height"] - float(bbox.t)
+    item_bottom = page_data["height"] - float(bbox.b)
+    tolerance_x = max(6.0, page_data["width"] * 0.012)
+    tolerance_y = max(6.0, page_data["height"] * 0.012)
+    for line in page_data["margin_annotation_lines"]:
+        if normalize(line["text"]) != label_key:
+            continue
+        words = line["words"]
+        line_left = min(word["x0"] for word in words)
+        line_right = max(word["x1"] for word in words)
+        line_top = min(word["top"] for word in words)
+        line_bottom = max(word["bottom"] for word in words)
+        if (
+            abs(item_left - line_left) <= tolerance_x
+            and abs(item_right - line_right) <= tolerance_x
+            and abs(item_top - line_top) <= tolerance_y
+            and abs(item_bottom - line_bottom) <= tolerance_y
+        ):
+            return True
+    return False
+
+
+# PAGE-NUMBER FILTER: recognize standalone labels, then require edge-position geometry.
+def is_page_number_text(value):
+    """Recognize short, standalone printed page-number forms, not body sentences."""
+    text = re.sub(r"\s+", " ", str(value or "")).strip()
+    return bool(re.fullmatch(
+        r"(?:(?:page|p)\.?\s*)?\d{1,4}(?:\s*(?:/|of)\s*\d{1,4})?",
+        text,
+        flags=re.IGNORECASE,
+    ))
+
+
+def is_near_page_edge(left, right, top, bottom, page_width, page_height):
+    """Page-edge zones scale with the actual page size, including rotated/sized pages."""
+    horizontal_edge = page_width * 0.08
+    vertical_edge = page_height * 0.08
+    return (
+        left <= horizontal_edge
+        or right >= page_width - horizontal_edge
+        or top <= vertical_edge
+        or bottom >= page_height - vertical_edge
+    )
+
+
+def is_page_number_line(line, page_width, page_height):
+    if not is_page_number_text(line["text"]):
+        return False
+    words = line["words"]
+    left = min(word["x0"] for word in words)
+    right = max(word["x1"] for word in words)
+    top = min(word["top"] for word in words)
+    bottom = max(word["bottom"] for word in words)
+    return is_near_page_edge(left, right, top, bottom, page_width, page_height)
+
+
+def is_page_number_item(text, bbox, page_data):
+    """Match a Docling number to a standalone PDF marker at the same location.
+
+    This prevents an index/table value (for example, the trailing 40 in an index
+    row) from being removed merely because Docling split it into a numeric item.
+    """
+    if not is_page_number_text(text) or bbox is None:
+        return False
+
+    # Docling bounding boxes use a bottom-left origin; compare in top-origin points.
+    item_left = float(bbox.l)
+    item_right = float(bbox.r)
+    item_top = page_data["height"] - float(bbox.t)
+    item_bottom = page_data["height"] - float(bbox.b)
+    if not is_near_page_edge(
+        item_left, item_right, item_top, item_bottom,
+        page_data["width"], page_data["height"],
+    ):
+        return False
+
+    item_text = normalize(text)
+    tolerance_x = max(6.0, page_data["width"] * 0.012)
+    tolerance_y = max(6.0, page_data["height"] * 0.012)
+    for line in page_data["page_number_lines"]:
+        if normalize(line["text"]) != item_text:
+            continue
+        words = line["words"]
+        line_left = min(word["x0"] for word in words)
+        line_right = max(word["x1"] for word in words)
+        line_top = min(word["top"] for word in words)
+        line_bottom = max(word["bottom"] for word in words)
+        same_source_location = (
+            abs(item_left - line_left) <= tolerance_x
+            and abs(item_right - line_right) <= tolerance_x
+            and abs(item_top - line_top) <= tolerance_y
+            and abs(item_bottom - line_bottom) <= tolerance_y
+        )
+        if same_source_location:
+            return True
+    return False
+
+
+def heading_marker_depth(text):
+    """Infer outline depth from a leading numeric or alphabetic marker."""
+    match = re.match(
+        r"^\s*[\(\[]?([A-Za-z0-9]+(?:[./-][A-Za-z0-9]+)*)[\)\].:]?\s+",
+        str(text or ""),
+    )
+    if not match:
+        return None
+    marker = match.group(1)
+    parts = [part for part in re.split(r"[./-]", marker) if part]
+    # A marker is structural when it contains digits or uses explicit list punctuation.
+    matched_text = str(text or "").lstrip()
+    explicit_delimiter = bool(re.match(r"^[\(\[]?[A-Za-z][A-Za-z0-9]*[\)\].:]\s+", matched_text))
+    if not any(part.isdigit() for part in parts) and not explicit_delimiter:
+        return None
+    return len(parts)
+
+
+def labeled_heading_signature(text):
+    """Derive a repeated label-plus-designator signature from observed heading text."""
+    tokens = str(text or "").strip().split()
+    for split_at in range(1, len(tokens)):
+        designator = tokens[split_at]
+        punctuation = designator[-1:] if designator[-1:] in {":", "."} else ""
+        value = designator[:-1] if punctuation else designator
+        if punctuation and (value.isalpha() or value.isdigit()):
+            label = tuple(token.casefold() for token in tokens[:split_at])
+            value_kind = "numeric" if value.isdigit() else "alphabetic"
+            return label, value_kind, punctuation
+    return None
+
+
+def split_combined_heading(item, tree_level, page_no, page_data):
+    """Reconstruct a merged Docling heading from matching source-PDF text lines.
+
+    Lines are selected from the Docling bounding box and verified against its text.
+    Wrapped lines stay together; new headings are inferred from numbering depth or
+    a repeated label/designator pattern observed in the same block.
+    """
+    if label_name(item) not in {"SECTION_HEADER", "TITLE"}:
+        return []
+    provenance = (getattr(item, "prov", None) or [None])[0]
+    bbox = getattr(provenance, "bbox", None) if provenance else None
+    if bbox is None:
+        return []
+
+    combined_text = normalize(getattr(item, "text", ""))
+    bbox_top = page_data["height"] - float(bbox.t)
+    bbox_bottom = page_data["height"] - float(bbox.b)
+    candidates = []
+    for line in page_data["lines"]:
+        line_text = clean_pdf_text(line["text"])
+        line_top = min(word["top"] for word in line["words"])
+        line_bottom = max(word["bottom"] for word in line["words"])
+        line_center = (line_top + line_bottom) / 2
+        if not (bbox_top <= line_center <= bbox_bottom):
+            continue
+        normalized_line = normalize(line_text)
+        if normalized_line and normalized_line in combined_text:
+            candidates.append({
+                "top": line_top,
+                "left": min(word["x0"] for word in line["words"]),
+                "text": line_text,
+            })
+
+    candidates.sort(key=lambda candidate: (candidate["top"], candidate["left"]))
+    if len(candidates) < 2:
+        return []
+
+    root_signature = labeled_heading_signature(candidates[0]["text"])
+    segments = []
+    for candidate in candidates:
+        text = candidate["text"]
+        marker_depth = heading_marker_depth(text)
+        is_repeated_label = (
+            root_signature is not None
+            and labeled_heading_signature(text) == root_signature
+        )
+        if not segments or marker_depth is not None or is_repeated_label:
+            segments.append({**candidate, "marker_depth": marker_depth})
+        else:
+            # A visual continuation without a new structural marker remains part of
+            # its preceding heading instead of becoming a false additional heading.
+            segments[-1]["text"] = f"{segments[-1]['text']} {text}".strip()
+
+    if len(segments) < 2:
+        return []
+
+    base_level = max(1, int(getattr(item, "level", tree_level or 1) or 1))
+    first_depth = segments[0]["marker_depth"]
+    reconstructed = []
+    for index, segment in enumerate(segments):
+        if index == 0 or labeled_heading_signature(segment["text"]) == root_signature:
+            level = base_level
+        elif segment["marker_depth"] is not None:
+            offset = first_depth or 0
+            level = base_level + max(1 if first_depth is None else 0,
+                                     segment["marker_depth"] - offset)
+        else:
+            level = base_level
+        reconstructed.append((
+            segment["top"], segment["left"], segment["text"], min(level, 9)
+        ))
+    return reconstructed
+
+
+def pdf_page_lines(page):
+    """Group words by overlapping vertical bounds instead of a fixed point tolerance."""
+    words = sorted(page.extract_words(), key=lambda item: (item["top"], item["x0"]))
+    lines = []
+    for word_item in words:
+        match = next((line for line in reversed(lines)
+                      if word_item["top"] < line["bottom"]
+                      and word_item["bottom"] > line["top"]), None)
+        if match is None:
+            match = {
+                "top": word_item["top"],
+                "bottom": word_item["bottom"],
+                "words": [],
+            }
+            lines.append(match)
+        else:
+            match["top"] = min(match["top"], word_item["top"])
+            match["bottom"] = max(match["bottom"], word_item["bottom"])
+        match["words"].append(word_item)
+    for line in lines:
+        line["words"].sort(key=lambda item: item["x0"])
+        line["text"] = " ".join(item["text"] for item in line["words"])
+    return sorted(lines, key=lambda line: line["top"])
+
+
+def build_asset_catalog(items_by_page, pdf_page_data):
+    """Assign one stable ID to each retained table or picture for DOCX and metadata."""
+    catalog = {}
+    table_number = 0
+    image_number = 0
+    furniture_labels = {"PAGE_HEADER", "PAGE_FOOTER", "FOOTNOTE", "FOOTNOTE_REFERENCE"}
+    for page_number in sorted(items_by_page):
+        page_data = pdf_page_data[page_number - 1]
+        page_items = sorted(items_by_page[page_number], key=lambda entry: (-entry[0], entry[1]))
+        for _top, _left, item, _tree_level in page_items:
+            if isinstance(item, dict):
+                label = str(item.get("label", "")).upper()
+                text = str(item.get("text", "") or "").strip()
+                provenance = None
+            else:
+                label = label_name(item)
+                text = str(getattr(item, "text", "") or "").strip()
+                provenance = (getattr(item, "prov", None) or [None])[0]
+            if label in furniture_labels:
+                continue
+            bbox = getattr(provenance, "bbox", None) if provenance else None
+            if is_recurring_margin_label_item(text, bbox, page_data):
+                continue
+            if is_page_number_item(text, bbox, page_data):
+                continue
+            if (text and label not in {"SECTION_HEADER", "TITLE"}
+                    and normalize(text) in normalize(page_data["furniture_text"])):
+                continue
+            if label in {"TABLE", "TABLE_ITEM"}:
+                table_number += 1
+                catalog[id(item)] = {"type": "table", "id": table_number}
+            elif label in {"PICTURE", "PICTURE_ITEM"}:
+                image_number += 1
+                catalog[id(item)] = {"type": "image", "id": image_number}
+    return catalog
+
+# Metadata helper functions copied from the supplied implementation.
+def bbox_to_absolute_px(bbox_l, bbox_t, bbox_r, bbox_b, page_h_pt, dpi):
+    scale = dpi / 72.0
+    ax0 = int(bbox_l * scale)
+    ax1 = int(bbox_r * scale)
+    ay0 = int((page_h_pt - bbox_t) * scale)
+    ay1 = int((page_h_pt - bbox_b) * scale)
+    return ax0, ay0, ax1, ay1
+
+
+def render_page_to_pil(doc_fitz, page_no, dpi):
+    page = doc_fitz[page_no]
+    zoom = dpi / 72.0
+    mat = fitz.Matrix(zoom, zoom)
+    pix = page.get_pixmap(matrix=mat)
+    return Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+
+
+def crop_image(img, bbox):
+    x0, y0, x1, y1 = bbox
+    x0 = max(0, x0)
+    y0 = max(0, y0)
+    x1 = min(img.width, x1)
+    y1 = min(img.height, y1)
+    if x1 <= x0 or y1 <= y0:
+        return img
+    return img.crop((x0, y0, x1, y1))
+
+
+def classify_image_zone(y_center_norm):
+    if y_center_norm < HF_TIGHT_FRAC:
+        return "header"
+    elif y_center_norm > (1.0 - HF_TIGHT_FRAC):
+        return "footer"
+    else:
+        return "body"
+
+
+def _page_margin_blocks(doc_fitz, page_idx, top_frac, bot_frac):
+    page = doc_fitz[page_idx]
+    h = page.rect.height
+    top, bot = [], []
+    for b in page.get_text("blocks"):
+        if b[6] != 0:
+            continue
+        x0, y0, x1, y1, text = b[0], b[1], b[2], b[3], b[4]
+        t = " ".join(text.split())
+        if not t:
+            continue
+        yc = (y0 + y1) / 2.0 / h
+        if yc < top_frac:
+            top.append((x0, y0, x1, y1, t))
+        elif yc > (1.0 - bot_frac):
+            bot.append((x0, y0, x1, y1, t))
+    return top, bot
+
+
+def _norm(text):
+    return " ".join(text.lower().split())
+
+
+def _build_hf_repetition(doc_fitz, page_nos):
+    total = len(page_nos)
+    top_pages = {}
+    bot_pages = {}
+    for pno in page_nos:
+        tb, bb = _page_margin_blocks(doc_fitz, pno - 1, HF_REPEAT_FRAC, HF_REPEAT_FRAC)
+        seen = set()
+        for blk in tb:
+            n = _norm(blk[4])
+            if n and n not in seen:
+                top_pages.setdefault(n, set()).add(pno)
+                seen.add(n)
+        seen = set()
+        for blk in bb:
+            n = _norm(blk[4])
+            if n and n not in seen:
+                bot_pages.setdefault(n, set()).add(pno)
+                seen.add(n)
+    min_repeat = max(2, int(total * HF_REPEAT_MIN_FRAC))
+    running_top = {n for n, ps in top_pages.items() if len(ps) >= min_repeat}
+    running_bot = {n for n, ps in bot_pages.items() if len(ps) >= min_repeat}
+    return running_top, running_bot
+
+
+def _page_all_blocks(doc_fitz, page_idx):
+    page = doc_fitz[page_idx]
+    out = []
+    for b in page.get_text("blocks"):
+        if b[6] != 0:
+            continue
+        t = " ".join(b[4].split())
+        if not t:
+            continue
+        out.append((b[0], b[1], b[2], b[3], t))
+    return out
+
+
+def _median_len(blocks):
+    lens = [len(_norm(b[4])) for b in blocks]
+    if not lens:
+        return 0
+    return statistics.median(lens)
+
+
+def _is_page_number(text):
+    core = re.sub(r'[\s:.\-\u2013\u2014]', '', text)
+    return core.isdigit() and len(core) <= 3
+
+
+def _page_header_footer(doc_fitz, page_idx, page_h_pt, running_top, running_bot):
+    h = page_h_pt
+    header_lines, footer_lines = [], []
+    hf_rects = []
+
+    all_blocks = _page_all_blocks(doc_fitz, page_idx)
+    med = _median_len(all_blocks)
+    tb, _ = _page_margin_blocks(doc_fitz, page_idx, HF_REPEAT_FRAC, HF_REPEAT_FRAC)
+    for blk in tb:
+        x0, y0, x1, y1, t = blk
+        n = _norm(t)
+        is_running = n in running_top
+        tight = ((y0 + y1) / 2.0 / h) < HF_TIGHT_FRAC
+        is_short = med > 0 and len(n) <= HF_SHORT_RATIO * med
+        if is_running or (USE_HF_POSITION and tight and is_short):
+            header_lines.append(t)
+            hf_rects.append((x0, y0, x1, y1))
+
+    foot_rects = set()
+    _, bb = _page_margin_blocks(doc_fitz, page_idx, HF_REPEAT_FRAC, HF_REPEAT_FRAC)
+    for blk in bb:
+        x0, y0, x1, y1, t = blk
+        n = _norm(t)
+        if n in running_bot:
+            footer_lines.append(t)
+            foot_rects.add((x0, y0, x1, y1))
+
+    if all_blocks and not foot_rects:
+        sorted_blks = sorted(all_blocks, key=lambda b: (b[1], b[0]))
+        med_len = _median_len(sorted_blks)
+        bottom_block = sorted_blks[-1]
+        btext = bottom_block[4]
+        bottom_yc = (bottom_block[1] + bottom_block[3]) / 2.0 / h
+        if bottom_yc <= (1.0 - HF_REPEAT_FRAC):
+            pass
+        elif _is_page_number(btext):
+            footer_lines.append(btext)
+            foot_rects.add((bottom_block[0], bottom_block[1],
+                            bottom_block[2], bottom_block[3]))
+        else:
+            footer_idx = len(sorted_blks) - 1
+            cluster = [sorted_blks[footer_idx]]
+            while footer_idx > 0:
+                prev = sorted_blks[footer_idx - 1]
+                prev_top = prev[1]
+                if prev_top < (1.0 - HF_GAP_TOP_FRAC) * h:
+                    break
+                if _is_page_number(prev[4]):
+                    break
+                footer_idx -= 1
+                cluster.append(prev)
+            for blk in reversed(cluster):
+                if (blk[0], blk[1], blk[2], blk[3]) not in foot_rects:
+                    footer_lines.append(blk[4])
+                    foot_rects.add((blk[0], blk[1], blk[2], blk[3]))
+
+    hf_rects.extend(foot_rects)
+    return "\n".join(header_lines), "\n".join(footer_lines), hf_rects
+
+
+def _overlaps_hf(bbox, page_h_pt, hf_rects):
+    ty0 = page_h_pt - bbox.t
+    ty1 = page_h_pt - bbox.b
+    tl, tr = bbox.l, bbox.r
+    for (x0, y0, x1, y1) in hf_rects:
+        if not (tr < x0 or tl > x1 or ty1 < y0 or ty0 > y1):
+            return True
+    return False
+
+
+def extract_hyperlinks_from_page(doc_fitz, page_no, page_h_pt):
+    page = doc_fitz[page_no]
+    hyperlinks = []
+    for link in page.get_links():
+        if "uri" in link and link["uri"]:
+            r = link["from"]
+            hyperlinks.append({
+                "x0": r.x0, "y0": r.y0, "x1": r.x1, "y1": r.y1,
+                "uri": link["uri"],
+            })
+    return hyperlinks
+
+
+# ── Inline helpers ─────────────────────────────────────────────────────────────
+def _get_prov(item):
+    prov = getattr(item, "prov", None)
+    if prov is None:
+        return None
+    if isinstance(prov, list):
+        return prov[0] if prov else None
+    return prov
+
+
+def _label_str(item):
+    label = getattr(item, "label", "") or ""
+    return label.value if hasattr(label, "value") else str(label)
+
+def collect_layout_diagnostics(pdf_path: Path, trimmed_pdf_path: Path, start_page: int, end_page: int, markdown_path: Path, document):
+    """Collect PDF text geometry and furniture candidates, then write the source-versus-Docling Markdown diagnostic."""
+    pdf_page_data = []
+    with pdfplumber.open(trimmed_pdf_path) as pdf:
+        for page_number, page in enumerate(pdf.pages, start=1):
+            page_lines = pdf_page_lines(page)
+            top_band = page.height * 0.055
+            bottom_band = page.height * 0.055
+            header_lines = [line for line in page_lines if line["top"] <= top_band]
+            footer_lines = [line for line in page_lines
+                            if line["top"] >= page.height - bottom_band]
+            # Remove page-number candidates from PDF fallback body text at any page edge.
+            page_number_lines = [
+                line for line in page_lines
+                if is_page_number_line(line, page.width, page.height)
+            ]
+            excluded_from_body = header_lines + footer_lines + page_number_lines
+            pdf_page_data.append({
+                "width": page.width,
+                "height": page.height,
+                "header": "   |   ".join(clean_pdf_text(line["text"]) for line in header_lines),
+                "footer": "   |   ".join(clean_pdf_text(line["text"]) for line in footer_lines),
+                "page_number_lines": page_number_lines,
+                "furniture_text": " ".join(
+                    line["text"] for line in header_lines + footer_lines + page_number_lines
+                ),
+                "lines": page_lines,
+                "body_lines": [line for line in page_lines if line not in excluded_from_body],
+            })
+
+    # Infer recurring margin labels from the selected PDF pages instead of naming a
+    # particular label. Requiring repetition across pages reduces false positives.
+    margin_label_pages = defaultdict(set)
+    for selected_page, page_data in enumerate(pdf_page_data, start=1):
+        for line in page_data["lines"]:
+            if is_parenthetical_margin_label(line, page_data["width"]):
+                margin_label_pages[normalize(line["text"])].add(selected_page)
+    recurring_margin_label_keys = {
+        label_key for label_key, pages in margin_label_pages.items() if len(pages) >= 2
+    }
+    for page_data in pdf_page_data:
+        page_data["recurring_margin_label_keys"] = recurring_margin_label_keys
+        page_data["margin_annotation_lines"] = [
+            line for line in page_data["lines"]
+            if normalize(line["text"]) in recurring_margin_label_keys
+            and is_parenthetical_margin_label(line, page_data["width"])
+        ]
+
+
+    markdown_parts = [
+        f"# {pdf_path.stem} layout and section diagnostics",
+        f"Source PDF: `{pdf_path.name}`  \
+    Selected source pages: {start_page}-{end_page}",
+        "This diagnostic compares selectable PDF text and coordinates with Docling's detected elements and Markdown conversion. Source coordinates are measured in PDF points from the page's top-left. Lines are grouped by approximate text baseline.",
+        "## Page headers and footers",
+    ]
+    for selected_page, page_data in enumerate(pdf_page_data, start=1):
+        source_page = selected_page + start_page - 1
+        markdown_parts.append(f"### Source page {source_page}")
+        markdown_parts.append(f"**Header:** {page_data['header'] or '(none detected)'}")
+        markdown_parts.append(f"**Footer:** {page_data['footer'] or '(none detected)'}")
+
+    markdown_parts.extend([
+        "## Page-number candidates omitted from the DOCX",
+        "Short standalone numeric page labels (for example, `2`, `2/42`, or `Page 2`) are omitted when their text box falls within a size-relative edge zone on any side of the page. The raw source lines remain in the table below for diagnosis.",
+    ])
+    for selected_page, page_data in enumerate(pdf_page_data, start=1):
+        source_page = selected_page + start_page - 1
+        candidates = page_data["page_number_lines"]
+        labels = [clean_pdf_text(line["text"]) for line in candidates]
+        markdown_parts.append(
+            f"- Source page {source_page}: " + (", ".join(f"`{label}`" for label in labels) if labels else "(none detected)")
+        )
+
+    markdown_parts.extend([
+        "## Recurring right-margin labels omitted from the DOCX",
+        "Short parenthetical labels are omitted only when the same label recurs on multiple selected pages, is aligned in the right margin, and matches a Docling item at the same location. Inline paragraph text and ordinary list markers are retained.",
+    ])
+    for selected_page, page_data in enumerate(pdf_page_data, start=1):
+        source_page = selected_page + start_page - 1
+        labels = [clean_pdf_text(line["text"]) for line in page_data["margin_annotation_lines"]]
+        markdown_parts.append(
+            f"- Source page {source_page}: " + (", ".join(f"`{label}`" for label in labels) if labels else "(none detected)")
+        )
+
+    markdown_parts.extend([
+        "## Source PDF text lines",
+        "These rows come directly from the PDF text layer. Compare their coordinates and wording with the Docling elements below to see whether sections were already on the same visual line in the source.",
+        "| Source page | Top (pt) | Left (pt) | Right (pt) | Source text |",
+        "| ---: | ---: | ---: | ---: | --- |",
+    ])
+    for selected_page, page_data in enumerate(pdf_page_data, start=1):
+        source_page = selected_page + start_page - 1
+        for line in page_data["lines"]:
+            left = min(word["x0"] for word in line["words"])
+            right = max(word["x1"] for word in line["words"])
+            source_text = clean_pdf_text(line["text"]).replace("|", "\\|")
+            markdown_parts.append(
+                f"| {source_page} | {line['top']:.1f} | {left:.1f} | {right:.1f} | {source_text} |"
+            )
+
+    markdown_parts.extend([
+        "## Docling detected elements",
+        "This list shows Docling's labels, heading levels, and page coordinates before DOCX formatting.",
+        "| Source page | Label | Level | Top (pt) | Left (pt) | Detected text/content |",
+        "| ---: | --- | ---: | ---: | ---: | --- |",
+    ])
+    for item, tree_level in document.iterate_items():
+        local_page = first_page_number(item)
+        if local_page is None:
+            continue
+        source_page = local_page + start_page - 1
+        provenance = (getattr(item, "prov", None) or [None])[0]
+        bbox = getattr(provenance, "bbox", None) if provenance else None
+        page_height = pdf_page_data[local_page - 1]["height"]
+        top = page_height - float(bbox.t) if bbox is not None else ""
+        left = float(bbox.l) if bbox is not None else ""
+        label = label_name(item)
+        level = getattr(item, "level", tree_level or "") if label in {"SECTION_HEADER", "TITLE"} else ""
+        detected_text = str(getattr(item, "text", "") or "").strip()
+        if label in {"TABLE", "TABLE_ITEM"}:
+            detected_text = item.export_to_markdown(doc=document)
+        elif label in {"PICTURE", "PICTURE_ITEM"} and not detected_text:
+            detected_text = "[picture element]"
+        detected_text = re.sub(r"\s+", " ", detected_text).replace("|", "\\|")
+        markdown_parts.append(
+            f"| {source_page} | {label} | {level} | {top if top == '' else f'{top:.1f}'} | "
+            f"{left if left == '' else f'{left:.1f}'} | {detected_text} |"
+        )
+
+    markdown_parts.extend(["## Docling Markdown conversion", document.export_to_markdown()])
+    markdown_path.write_text("\n\n".join(markdown_parts).rstrip() + "\n", encoding="utf-8")
+    print(f"Saved Markdown layout diagnostics: {markdown_path}")
+
+
+    return pdf_page_data, markdown_parts
+
+pdf_page_data, markdown_parts = collect_layout_diagnostics(
+    PDF_PATH, TRIMMED_PDF_PATH, START_PAGE, END_PAGE, MARKDOWN_PATH, doc
+)
+
+def reconcile_docling_with_pdf(document, pdf_page_data: list[dict], start_page: int):
+    """Reconstruct merged headings and restore missing selectable PDF body lines without duplicating structured regions."""
+    items_by_page = defaultdict(list)
+    recognized_text_by_page = defaultdict(list)
+    reconstructed_heading_records = []
+    reconstructed_heading_count = 0
+    for item, tree_level in document.iterate_items():
+        page_no = first_page_number(item)
+        if page_no is None:
+            continue
+        provenance = (getattr(item, "prov", None) or [None])[0]
+        bbox = getattr(provenance, "bbox", None) if provenance else None
+        # Docling coordinates are bottom-origin; negative top sorts topmost first.
+        top = float(getattr(bbox, "t", 0)) if bbox is not None else 0.0
+        left = float(getattr(bbox, "l", 0)) if bbox is not None else 0.0
+        page_data = pdf_page_data[page_no - 1]
+        reconstructed_headings = split_combined_heading(item, tree_level, page_no, page_data)
+        if reconstructed_headings:
+            reconstructed_heading_count += len(reconstructed_headings)
+            for heading_top, heading_left, heading_text, heading_level in reconstructed_headings:
+                reconstructed_heading_records.append({
+                    "source_page": page_no + start_page - 1,
+                    "level": heading_level,
+                    "text": heading_text,
+                    "top": heading_top,
+                    "left": heading_left,
+                })
+                heading_item = SimpleNamespace(
+                    label=getattr(item, "label", "SECTION_HEADER"),
+                    text=heading_text,
+                    level=heading_level,
+                    prov=getattr(item, "prov", None),
+                )
+                # Convert the PDF text-line top coordinate back to Docling's bottom-origin sort key.
+                items_by_page[page_no].append(
+                    (page_data["height"] - heading_top, heading_left, heading_item, heading_level)
+                )
+        else:
+            items_by_page[page_no].append((top, left, item, tree_level))
+        text = str(getattr(item, "text", "") or "").strip()
+        if text:
+            recognized_text_by_page[page_no].append(text)
+        if label_name(item) in {"TABLE", "TABLE_ITEM"}:
+            recognized_text_by_page[page_no].append(item.export_to_markdown(doc=document))
+
+    # Reconcile the PDF's selectable text with Docling's output. Add any complete
+    # source text line that Docling did not emit, preserving its page and position.
+    for page_number, page_data in enumerate(pdf_page_data, start=1):
+        recognized_text = normalize(" ".join(recognized_text_by_page[page_number]))
+        structured_regions = []
+        for item, _tree_level in document.iterate_items():
+            if label_name(item) not in {"TABLE", "TABLE_ITEM", "PICTURE", "PICTURE_ITEM"}:
+                continue
+            provenance = (getattr(item, "prov", None) or [None])[0]
+            if provenance is None or provenance.page_no != page_number:
+                continue
+            bbox = getattr(provenance, "bbox", None)
+            if bbox is not None:
+                structured_regions.append(bbox)
+        for line in page_data["body_lines"]:
+            line_text = clean_pdf_text(line["text"])
+            normalized_line = normalize(line_text)
+            if not normalized_line or normalized_line in recognized_text:
+                continue
+            line_left = min(word["x0"] for word in line["words"])
+            line_right = max(word["x1"] for word in line["words"])
+            line_top = page_data["height"] - line["top"]
+            line_bottom = page_data["height"] - max(word["bottom"] for word in line["words"])
+            already_in_structured_region = any(
+                line_right >= float(bbox.l) - 4 and line_left <= float(bbox.r) + 4
+                and line_top >= float(bbox.b) - 28 and line_bottom <= float(bbox.t) + 28
+                for bbox in structured_regions
+            )
+            if not already_in_structured_region:
+                items_by_page[page_number].append(
+                    (line_top, line_left,
+                     {"label": "PDF_FALLBACK", "text": line_text}, 1)
+                )
+
+
+    return items_by_page, reconstructed_heading_records, reconstructed_heading_count
+
+items_by_page, reconstructed_heading_records, reconstructed_heading_count = reconcile_docling_with_pdf(
+    doc, pdf_page_data, START_PAGE
+)
+
+def create_section_docx(document, pdf_path: Path, start_page: int, pdf_page_data: list[dict], items_by_page: dict, reconstructed_heading_records: list[dict], reconstructed_heading_count: int, markdown_parts: list[str], docx_path: Path, section_index_path: Path, markdown_path: Path):
+    """Create the formatted DOCX and section index, then append the reconstructed outline to the Markdown report."""
+    word = Document()
+    word.core_properties.title = pdf_path.stem
+    word.core_properties.subject = "Docling section-preservation proof of concept"
+
+    first_page = next(iter(document.pages.values()), None)
+    if first_page is not None and getattr(first_page, "size", None) is not None:
+        section = word.sections[0]
+        section.page_width = Pt(float(first_page.size.width))
+        section.page_height = Pt(float(first_page.size.height))
+        section.top_margin = Inches(0.55)
+        section.bottom_margin = Inches(0.55)
+        section.left_margin = Inches(0.58)
+        section.right_margin = Inches(0.58)
+
+    # Compact, readable typography helps each source page fit on its corresponding DOCX page.
+    normal = word.styles["Normal"]
+    normal.font.name = "Arial"
+    normal.font.size = Pt(9)
+    normal.paragraph_format.space_after = Pt(3)
+    normal.paragraph_format.line_spacing = 1.0
+    title_style = word.styles["Title"]
+    title_style.font.color.rgb = RGBColor(0, 0, 0)
+    title_style.font.underline = False
+    title_ppr = title_style._element.get_or_add_pPr()
+    title_border = title_ppr.find(qn("w:pBdr"))
+    if title_border is not None:
+        title_ppr.remove(title_border)
+
+    for style_name, size in (("Title", 18), ("Heading 1", 14), ("Heading 2", 12),
+                             ("Heading 3", 10.5), ("Heading 4", 9.5), ("Heading 5", 9),
+                             ("Heading 6", 9), ("Heading 7", 9), ("Heading 8", 9),
+                             ("Heading 9", 9)):
+        style = word.styles[style_name]
+        style.font.name = "Arial"
+        style.font.size = Pt(size)
+        style.paragraph_format.space_before = Pt(5)
+        style.paragraph_format.space_after = Pt(2)
+        style.paragraph_format.keep_with_next = True
+
+
+    section_index = []
+    block_counts = Counter()
+    asset_catalog = build_asset_catalog(items_by_page, pdf_page_data)
+
+
+    def record_block(category):
+        block_counts[category] += 1
+
+
+    for page_number in range(1, document.num_pages() + 1):
+        if page_number > 1:
+            word.add_section(WD_SECTION.NEW_PAGE)
+        page_items = sorted(items_by_page.get(page_number, []), key=lambda entry: (-entry[0], entry[1]))
+        for _top, _left, item, tree_level in page_items:
+            label = ("PDF_FALLBACK" if isinstance(item, dict) and item.get("label") == "PDF_FALLBACK"
+                     else label_name(item))
+            text = str(item.get("text", "") if isinstance(item, dict)
+                       else getattr(item, "text", "") or "").strip()
+            if label in {"PAGE_HEADER", "PAGE_FOOTER", "FOOTNOTE", "FOOTNOTE_REFERENCE"}:
+                record_block("furniture_or_footnote_skipped")
+                continue
+            # Remove recurring, standalone right-margin annotations without hard-coding
+            # their wording; preserve inline labels and one-off parenthetical content.
+            page_data = pdf_page_data[page_number - 1]
+            item_provenance = (getattr(item, "prov", None) or [None])[0] if not isinstance(item, dict) else None
+            item_bbox = getattr(item_provenance, "bbox", None) if item_provenance else None
+            if is_recurring_margin_label_item(text, item_bbox, page_data):
+                record_block("recurring_margin_label_skipped")
+                continue
+
+            # Omit Docling page-number elements from the generated DOCX as well.
+            if is_page_number_item(text, item_bbox, page_data):
+                record_block("page_number_skipped")
+                continue
+
+            if (text and label not in {"SECTION_HEADER", "TITLE"}
+                    and normalize(text) in normalize(page_data["furniture_text"])):
+                continue
+
+            if label in {"SECTION_HEADER", "TITLE"} and text:
+                # Place the document's detected title at the start of its page instead of
+                # relying on Docling's tree order, which can yield it after body content.
+                level = max(1, min(int(getattr(item, "level", tree_level or 1) or 1), 9))
+                if page_number == 1 and level == 1 and not section_index:
+                    word.add_paragraph(text, style="Title")
+                    stored_level = 1
+                else:
+                    word.add_heading(text, level=min(level, 9))
+                    stored_level = level
+                source_page_number = page_number + start_page - 1
+                section_index.append({"title": text, "level": stored_level,
+                                      "start_page": source_page_number,
+                                      "end_page": source_page_number})
+                record_block("heading")
+                continue
+
+            if label in {"TABLE", "TABLE_ITEM"}:
+                asset = asset_catalog.get(id(item))
+                if asset is not None:
+                    word.add_paragraph(
+                        f'<doc_ai type="table" id="table_{asset["id"]}"/>'
+                    )
+                    record_block("table_tag")
+                continue
+            if label in {"PICTURE", "PICTURE_ITEM"}:
+                asset = asset_catalog.get(id(item))
+                if asset is not None:
+                    word.add_paragraph(
+                        f'<doc_ai type="image" id="image_{asset["id"]}"/>'
+                    )
+                    record_block("image_tag")
+                continue
+            if not text:
+                continue
+            if label in {"LIST_ITEM", "ORDERED_LIST", "UNORDERED_LIST"}:
+                style = "List Number" if label == "ORDERED_LIST" else "List Bullet"
+                paragraph = word.add_paragraph(text, style=style)
+                record_block("list_item")
+            else:
+                word.add_paragraph(text)
+                record_block("pdf_text_fallback" if label == "PDF_FALLBACK" else "text")
+
+    word.save(docx_path)
+    section_index_path.write_text(json.dumps(section_index, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"Saved: {docx_path}")
+    print(f"Saved: {section_index_path}")
+    print(f"Content blocks: {dict(block_counts)}")
+    print(f"Section headings: {len(section_index)}")
+    print(f"Headings reconstructed from separate PDF lines: {reconstructed_heading_count}")
+
+    # Keep Docling's raw Markdown above for diagnosis, and show the headings reconstructed
+    # for the DOCX so both the extraction result and the repaired outline are inspectable.
+    markdown_parts.extend([
+        "## Reconstructed heading lines used for the DOCX",
+        "These are separate numbered source-PDF lines recovered from within a combined Docling heading block. Their assigned levels determine the DOCX heading hierarchy.",
+        "| Source page | Level | Top (pt) | Left (pt) | Heading text |",
+        "| ---: | ---: | ---: | ---: | --- |",
+    ])
+    if reconstructed_heading_records:
+        for heading in reconstructed_heading_records:
+            heading_text = heading["text"].replace("|", "\\|")
+            markdown_parts.append(
+                f"| {heading['source_page']} | {heading['level']} | {heading['top']:.1f} | "
+                f"{heading['left']:.1f} | {heading_text} |"
+            )
+    else:
+        markdown_parts.append("(No combined numbered heading blocks required reconstruction.)")
+    markdown_path.write_text("\n\n".join(markdown_parts).rstrip() + "\n", encoding="utf-8")
+    print(f"Updated Markdown with reconstructed heading outline: {markdown_path}")
+
+    return section_index, dict(block_counts), asset_catalog
+
+section_index, block_counts, asset_catalog = create_section_docx(
+    doc, PDF_PATH, START_PAGE, pdf_page_data, items_by_page,
+    reconstructed_heading_records, reconstructed_heading_count, markdown_parts,
+    DOCX_PATH, SECTION_INDEX_PATH, MARKDOWN_PATH,
+)
+
+def generate_page_metadata(
+    doc,
+    trimmed_pdf_path: Path,
+    meta_json_path: Path,
+    table_screenshot_dir: Path,
+    image_crop_dir: Path,
+):
+    """Run the metadata extraction flow from the supplied implementation."""
+    TABLE_SCREENSHOT_DIR = table_screenshot_dir
+    IMAGE_CROP_DIR = image_crop_dir
+    META_JSON_PATH = meta_json_path
+    TABLE_SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
+    IMAGE_CROP_DIR.mkdir(parents=True, exist_ok=True)
+    doc_fitz = fitz.open(str(trimmed_pdf_path))
+    print(f"PyMuPDF opened: {doc_fitz.page_count} pages")
+
+    items_by_page_meta: dict[int, list] = {}
+    for item, level in doc.iterate_items():
+        prov = _get_prov(item)
+        if prov is None:
+            continue
+        pno = prov.page_no
+        items_by_page_meta.setdefault(pno, []).append(item)
+
+    page_nos_meta = sorted(items_by_page_meta.keys())
+    for pno in page_nos_meta:
+        items_by_page_meta[pno].sort(key=lambda it: (
+            -(_get_prov(it).bbox.t if _get_prov(it) else 0),
+            (_get_prov(it).bbox.l if _get_prov(it) else 0),
+        ))
+
+    running_top, running_bot = _build_hf_repetition(doc_fitz, page_nos_meta)
+
+    table_counter = 0
+    pages_data_meta = []
+
+    for pno in page_nos_meta:
+        items = items_by_page_meta[pno]
+        page_idx_0 = pno - 1
+        page = doc_fitz[page_idx_0]
+        page_w_pt = int(page.rect.width)
+        page_h_pt = int(page.rect.height)
+
+        header_text, footer_text, hf_rects = _page_header_footer(
+            doc_fitz, page_idx_0, page_h_pt, running_top, running_bot
+        )
+
+        all_reading_items = []
+        for item in items:
+            prov = _get_prov(item)
+            if prov is None:
+                continue
+            all_reading_items.append({
+                "item": item,
+                "label": _label_str(item),
+                "bbox": prov.bbox,
+                "text": getattr(item, "text", "") or "",
+            })
+        all_reading_items.sort(key=lambda r: (-r["bbox"].t, r["bbox"].l))
+
+        # Docling furniture labels supplement the existing PyMuPDF block detector.
+        # Keep the Docling text and its page rectangle in the same metadata result,
+        # and add its rectangle to the shared exclusion regions for body extraction.
+        docling_headers = []
+        docling_footers = []
+        for reading_item in all_reading_items:
+            normalized_label = str(reading_item["label"]).strip().lower().replace(" ", "_")
+            if normalized_label not in {"page_header", "page_footer"}:
+                continue
+            furniture_text = str(reading_item["text"] or "").strip()
+            bbox = reading_item["bbox"]
+            docling_rect = (
+                float(bbox.l), page_h_pt - float(bbox.t),
+                float(bbox.r), page_h_pt - float(bbox.b),
+            )
+            hf_rects.append(docling_rect)
+            target_lines = docling_headers if normalized_label == "page_header" else docling_footers
+            if furniture_text:
+                target_lines.append(furniture_text)
+
+        def combine_furniture_text(*groups):
+            combined = []
+            seen = set()
+            for group in groups:
+                for value in group:
+                    cleaned = " ".join(str(value or "").split())
+                    key = _norm(cleaned)
+                    if key and key not in seen:
+                        seen.add(key)
+                        combined.append(cleaned)
+            return "\n".join(combined)
+
+        header_text = combine_furniture_text(header_text.splitlines(), docling_headers)
+        footer_text = combine_furniture_text(footer_text.splitlines(), docling_footers)
+
+        full_text_parts = []
+        table_entries = []
+        images = []
+        footnote_entries = []
+        hyperlink_entries = []
+        hyperlink_counter = 0
+        footnote_counter = 0
+        char_pos = 0
+        page_hyperlinks = extract_hyperlinks_from_page(doc_fitz, page_idx_0, page_h_pt)
+
+        for ri in all_reading_items:
+            item = ri["item"]
+            label = ri["label"]
+            text = ri["text"].strip()
+            bbox = ri["bbox"]
+
+            if label == "table":
+                table_counter += 1
+                table_id = table_counter
+
+                ax0, ay0, ax1, ay1 = bbox_to_absolute_px(
+                    bbox.l, bbox.t, bbox.r, bbox.b, page_h_pt, META_DPI
+                )
+                page_img = render_page_to_pil(doc_fitz, page_idx_0, META_DPI)
+                table_crop = crop_image(page_img, (ax0, ay0, ax1, ay1))
+                screenshot_file = f"doc_ai_table_id_{table_id}.png"
+                table_crop.save(TABLE_SCREENSHOT_DIR / screenshot_file)
+
+                table_data = getattr(item, "data", None)
+                if table_data is not None:
+                    n_rows = getattr(table_data, "num_rows", 0)
+                    n_cols = getattr(table_data, "num_cols", 0)
+                else:
+                    n_rows = n_cols = 0
+
+                caption = ""
+                caption_position = None
+                caption_style = "Normal"
+                for other in items:
+                    op = _get_prov(other)
+                    if op is None:
+                        continue
+                    ob = op.bbox
+                    ol = _label_str(other)
+                    if ol in ("section_header", "title", "text"):
+                        y_gap = bbox.t - (ob.t + ob.b)
+                        x_overlap = min(bbox.r, ob.r) - max(bbox.l, ob.l)
+                        if -5 < y_gap < 50 and x_overlap > 0:
+                            ct = (getattr(other, "text", "") or "").strip()
+                            if ct:
+                                caption, caption_position = ct, "above"
+                                break
+
+                tag = f"<doc_ai type='table' id={table_id}>"
+                tag_start = char_pos
+                full_text_parts.append(tag)
+                char_pos += len(tag)
+                table_entries.append({
+                    "table_index": table_id,
+                    "page_number": pno,
+                    "rows": n_rows,
+                    "columns": n_cols,
+                    "caption": caption,
+                    "caption_position": caption_position,
+                    "caption_style": caption_style if caption else "",
+                    "coordinates": {
+                        "rows": n_rows,
+                        "columns": n_cols,
+                        "start_char_pos": tag_start,
+                        "end_char_pos": char_pos,
+                        "start_page": pno,
+                        "screenshot_size_px": [table_crop.width, table_crop.height],
+                        "method": META_METHOD,
+                        "dpi_used": META_DPI,
+                    },
+                    "screenshot_file": screenshot_file,
+                    "screenshot_folder": "table_screenshots",
+                    "table_path": f"table_screenshots/{screenshot_file.replace('.png', '')}.png",
+                    "tag": tag,
+                })
+
+            elif label == "picture":
+                y_center_from_top = (page_h_pt - (bbox.t + bbox.b) / 2.0) / page_h_pt
+                zone = classify_image_zone(y_center_from_top)
+                ax0, ay0, ax1, ay1 = bbox_to_absolute_px(
+                    bbox.l, bbox.t, bbox.r, bbox.b, page_h_pt, META_DPI
+                )
+                page_img = render_page_to_pil(doc_fitz, page_idx_0, META_DPI)
+                img_crop = crop_image(page_img, (ax0, ay0, ax1, ay1))
+                crop_filename = f"page_{pno}_{zone}_img_{len(images)}.png"
+                img_crop.save(IMAGE_CROP_DIR / crop_filename)
+                images.append((zone, crop_filename))
+
+            else:
+                if _overlaps_hf(bbox, page_h_pt, hf_rects):
+                    continue
+                if text:
+                    if label == "footnote":
+                        footnote_counter += 1
+                        footnote_entries.append({
+                            "footnote_index": footnote_counter,
+                            "text": text,
+                            "page_number": pno,
+                        })
+
+                    hyperlink_text = text
+                    text_y0 = page_h_pt - bbox.t
+                    text_y1 = page_h_pt - bbox.b
+                    for hlink in page_hyperlinks:
+                        if (hlink["x0"] < bbox.r and hlink["x1"] > bbox.l and
+                                hlink["y0"] < text_y1 and hlink["y1"] > text_y0):
+                            hyperlink_counter += 1
+                            hyperlink_text = f"<doc_ai_hyperlink_{hyperlink_counter}>"
+                            hyperlink_entries.append({
+                                "hyperlink_index": hyperlink_counter,
+                                "uri": hlink["uri"],
+                                "text": text,
+                                "start_char_pos": char_pos,
+                                "end_char_pos": char_pos + len(hyperlink_text),
+                                "page_number": pno,
+                            })
+                            break
+                    full_text_parts.append(hyperlink_text)
+                    char_pos += len(hyperlink_text) + 1
+                    full_text_parts.append("\n")
+                    char_pos += 1
+
+        full_text = f"<page_{pno}>\n" + "".join(full_text_parts).strip() + f"\n</page_{pno}>"
+
+        image_zones = {"body": [], "header": [], "footer": []}
+        for zone, filename in images:
+            image_zones[zone].append(filename)
+
+        pages_data_meta.append({
+            "page_number": pno,
+            "page_type": "odd" if pno % 2 == 1 else "even",
+            "full_text": full_text,
+            "header": header_text,
+            "footer": footer_text,
+            "image": {
+                "body": image_zones["body"],
+                "header": image_zones["header"],
+                "footer": image_zones["footer"],
+            },
+            "table": table_entries,
+            "footnote": footnote_entries,
+            "hyperlink": hyperlink_entries,
+        })
+
+    doc_fitz.close()
+
+    # ── Write meta.json ──────────────────────────────────────────────────────────────
+    with open(meta_json_path, "w", encoding="utf-8") as f:
+        json.dump(pages_data_meta, f, indent=2, ensure_ascii=False)
+
+    total_tables_meta = sum(len(p["table"]) for p in pages_data_meta)
+    total_images_meta = sum(
+        len(p["image"]["body"]) + len(p["image"]["header"]) + len(p["image"]["footer"])
+        for p in pages_data_meta
+    )
+    total_hyperlinks_meta = sum(len(p["hyperlink"]) for p in pages_data_meta)
+    total_footnotes_meta = sum(len(p["footnote"]) for p in pages_data_meta)
+
+    print(f"\n{'=' * 50}")
+    print(f"  meta.json: {META_JSON_PATH}")
+    print(f"  Pages:     {len(pages_data_meta)}")
+    print(f"  Tables:    {total_tables_meta}")
+    print(f"  Images:    {total_images_meta}")
+    print(f"  Hyperlinks: {total_hyperlinks_meta}")
+    print(f"  Footnotes: {total_footnotes_meta}")
+    print(f"  Table screenshots: {TABLE_SCREENSHOT_DIR}")
+    print(f"  Image crops:       {IMAGE_CROP_DIR}")
+    print(f"{'=' * 50}\n")
+    return pages_data_meta, {
+        "pages": len(pages_data_meta),
+        "tables": total_tables_meta,
+        "images": total_images_meta,
+        "hyperlinks": total_hyperlinks_meta,
+        "footnotes": total_footnotes_meta,
+        "meta_json": str(meta_json_path),
+        "table_screenshots": str(TABLE_SCREENSHOT_DIR),
+        "image_crops": str(IMAGE_CROP_DIR),
+    }
+
+metadata_pages, metadata_summary = generate_page_metadata(
+    doc,
+    TRIMMED_PDF_PATH,
+    META_JSON_PATH,
+    TABLE_SCREENSHOT_DIR,
+    IMAGE_CROP_DIR,
+)
+
+def validate_and_chunk_docx(docx_path: Path, section_index_path: Path, chunk_json_path: Path, chunk_xlsx_path: Path, section_index: list[dict]):
+    """Check the generated DOCX structure and write section-aware chunks in JSON and Excel."""
+    check = Document(docx_path)
+    heading_counts = Counter(
+        paragraph.style.name for paragraph in check.paragraphs
+        if paragraph.style.name.startswith("Heading ")
+    )
+    print(f"DOCX size: {docx_path.stat().st_size:,} bytes")
+    print(f"Word heading styles: {dict(heading_counts)}")
+    print(f"Native Word tables: {len(check.tables)} (expected 0; tables are represented by tags)")
+    print(f"Image tags: {sum(1 for paragraph in check.paragraphs if '<doc_ai type="image"' in paragraph.text)}")
+    print(f"Table tags: {sum(1 for paragraph in check.paragraphs if '<doc_ai type="table"' in paragraph.text)}")
+    print(f"Indexed sections: {len(json.loads(section_index_path.read_text(encoding='utf-8')))}")
+
+    if not section_index:
+        print("WARNING: Docling detected no section headings. The output cannot preserve a hierarchy it did not identify.")
+    elif not check.paragraphs:
+        raise RuntimeError("Generated DOCX has no paragraphs.")
+
+    chunk_result = chunk_docx(docx_path)
+    chunk_json_path.write_text(
+        json.dumps(chunk_result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+    save_chunks_xlsx(chunk_result["chunks"], chunk_xlsx_path)
+    print(f"Section chunks: {chunk_result['chunk_count']}")
+    print(f"Chunk JSON: {chunk_json_path}")
+    print(f"Chunk Excel: {chunk_xlsx_path}")
+
+    return chunk_result
+
+chunk_result = validate_and_chunk_docx(
+    DOCX_PATH, SECTION_INDEX_PATH, CHUNK_JSON_PATH, CHUNK_XLSX_PATH, section_index
+)

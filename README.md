@@ -8,8 +8,8 @@ Feasibility implementation for a PDF extraction service that produces page-orien
 - PDF signature and upload-size checks; opaque request ID and SHA-256 source digest.
 - Optional Docling adapter with a project-owned canonical metadata model.
 - Docling furniture-tree headers and footers, including explicitly labeled text items; page numbers and footnotes are handled separately.
-- Output ZIP: the original PDF, `document.docx`, `metadata.json`, `manifest.json`, plus detected crops under `images/` and `tables/` when requested and available. The DOCX is built from an in-memory structured HTML representation that preserves headings, reading order, page boundaries, links, and asset references; no HTML file is written to disk or included in the ZIP.
-- DOCX is an editable text reconstruction. Image and table snapshots are separate PNG artifacts linked from their canonical metadata elements.
+- Output ZIP: the original PDF, `document.docx`, `metadata.json`, `manifest.json`, plus detected crops under `images/` and `tables/` when requested and available. The DOCX is built directly with `python-docx`, using Word heading/list styles, source-page breaks, link targets, and PDF text-line fallback for text Docling omitted. Combined headings are split when separate source lines and structural numbering support the split.
+- DOCX is an editable text reconstruction. Images and tables appear as `<doc_ai type="image|table" id="..."/>` tags; their PNG snapshots remain separate ZIP artifacts referenced by canonical metadata. Header, footer, footnote, and verified page-number elements are omitted from the DOCX body.
 - `/healthz` liveness endpoint.
 
 The endpoint and archive names are provisional until compared with sanitized PDFLens requests, responses, and ZIPs. It has no authentication, durable job state, object storage, OCR language policy, or production worker isolation. Do not expose it to untrusted networks. Docling must be configured to produce page images for table crops; output paths and cropping need validation against a reviewed corpus.
@@ -23,7 +23,7 @@ uv pip install --python .venv314/bin/python -e '.[docling]'
 uvicorn app.main:app --reload
 ```
 
-Each extraction ZIP includes the original PDF, `document.docx`, and `metadata.json`; the intermediate HTML used to format the DOCX is kept in memory and is not emitted as a file.
+Each extraction ZIP includes the original PDF, `document.docx`, and `metadata.json`. The application generates the DOCX directly; it does not create an HTML intermediate.
 
 Swagger UI is available at `/docs`. Example:
 
