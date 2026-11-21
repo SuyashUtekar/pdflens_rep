@@ -8,10 +8,13 @@ import uuid
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import Response
+from fastapi.responses import RedirectResponse, Response
+from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 
 from app.artifacts.package import build_package
+from app.api.ui_gateway import router as ui_gateway_router
+from app.config import settings
 from app.parsers.docling_adapter import DoclingAdapter, ParserExecutionError, ParserUnavailableError
 from app.schemas.models import (DocumentInfo, ExtractionField, ExtractionRequest,
                                  Metadata, ProcessingInfo)
@@ -20,8 +23,14 @@ from app.security.pdf import MAX_UPLOAD_BYTES, safe_filename, validate_pdf
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger("pdflens")
 app = FastAPI(title="PDFLens Replacement", version="0.1.0",
-              description="Feasibility API; legacy compatibility is pending contract discovery.")
+              description="PDFLens UI gateway and local extraction feasibility API.")
 MAX_PAGES = int(os.getenv("PDFLENS_MAX_PAGES", "500"))
+logger.info(
+    "pdflens_gateway_configured submit_url=%s result_url=%s health_url=%s configs=%s "
+    "jwt_configured=%s shared_storage_configured=%s",
+    bool(settings.submit_url), bool(settings.result_url), bool(settings.health_url),
+    len(settings.configs), bool(settings.auth_token), bool(os.getenv("PDFLENS_SHARED_STORAGE_DIR")),
+)
 
 
 @app.get("/healthz")
@@ -108,4 +117,13 @@ async def extract(file: UploadFile = File(...),
         return Response(content=output.read_bytes(), media_type="application/zip",
                         headers={"Content-Disposition": f'attachment; filename="{archive_filename}"',
                                  "X-Request-ID": request_id})
+
+
+@app.get("/", include_in_schema=False)
+def home() -> RedirectResponse:
+    return RedirectResponse(url="/ui/")
+
+
+app.include_router(ui_gateway_router)
+app.mount("/ui", StaticFiles(directory=Path(__file__).resolve().parent / "ui", html=True), name="ui")
 

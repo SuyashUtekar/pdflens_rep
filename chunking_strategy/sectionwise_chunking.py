@@ -11,6 +11,9 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import shutil
+import tempfile
+import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable
@@ -190,6 +193,45 @@ def chunk_docx(
     }
 
 
+def _find_docx_member(archive: zipfile.ZipFile) -> zipfile.ZipInfo:
+    """Return the sole DOCX in a PDFLens ZIP, rejecting ambiguous packages."""
+    members = [
+        item for item in archive.infolist()
+        if not item.is_dir() and item.filename.lower().endswith(".docx")
+    ]
+    if not members:
+        raise ValueError("The ZIP does not contain a .docx file.")
+    if len(members) > 1:
+        names = ", ".join(item.filename for item in members)
+        raise ValueError(f"Expected one DOCX in the ZIP; found {len(members)}: {names}")
+    return members[0]
+
+
+def chunk_pdflens_zip(source_zip: Path) -> dict[str, object]:
+    """Chunk the single DOCX inside a PDFLens ZIP without extracting the archive."""
+    source_zip = source_zip.expanduser().resolve()
+    if not source_zip.is_file():
+        raise FileNotFoundError(f"ZIP file does not exist: {source_zip}")
+    if source_zip.suffix.lower() != ".zip":
+        raise ValueError(f"Expected a .zip input file: {source_zip}")
+
+    try:
+        with zipfile.ZipFile(source_zip) as archive:
+            member = _find_docx_member(archive)
+            with tempfile.TemporaryDirectory(prefix="pdflens-chunk-") as temporary_dir:
+                temporary_docx = Path(temporary_dir) / Path(member.filename).name
+                with archive.open(member) as zipped_docx, temporary_docx.open("wb") as output:
+                    shutil.copyfileobj(zipped_docx, output)
+                result = chunk_docx(temporary_docx)
+    except zipfile.BadZipFile as exc:
+        raise ValueError(f"Input is not a valid ZIP archive: {source_zip}") from exc
+
+    result["source_zip"] = str(source_zip)
+    result["source_docx"] = member.filename
+    result["document"] = Path(member.filename).name
+    return result
+
+
 def save_chunks_xlsx(chunks: list[dict[str, object]], destination: Path) -> None:
     """Write the requested two-column Excel view of the generated chunks."""
     try:
@@ -230,9 +272,9 @@ def save_chunks_xlsx(chunks: list[dict[str, object]], destination: Path) -> None
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Split a DOCX into chunks grouped by Word heading sections."
+        description="Split a DOCX or a PDFLens ZIP containing one DOCX into section chunks."
     )
-    parser.add_argument("docx", type=Path, help="Path to the input DOCX file")
+    parser.add_argument("input", type=Path, help="Path to a DOCX or PDFLens ZIP file")
     parser.add_argument(
         "--output", "-o", type=Path, help="Output JSON path (defaults beside the DOCX)"
     )
@@ -247,16 +289,19 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    source = args.docx.expanduser().resolve()
+    source = args.input.expanduser().resolve()
     if not source.is_file():
-        parser.error(f"DOCX file does not exist: {source}")
-    if source.suffix.lower() != ".docx":
-        parser.error(f"Expected a .docx file: {source}")
+        parser.error(f"Input file does not exist: {source}")
+    if source.suffix.lower() not in {".docx", ".zip"}:
+        parser.error(f"Expected a .docx or .zip file: {source}")
 
     output = args.output.expanduser().resolve() if args.output else source.with_name(
         f"{source.stem}_chunks.json"
     )
-    result = chunk_docx(source, max_words=args.max_words, overlap_words=args.overlap_words)
+    if source.suffix.lower() == ".zip":
+        result = chunk_pdflens_zip(source)
+    else:
+        result = chunk_docx(source, max_words=args.max_words, overlap_words=args.overlap_words)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     excel_output = args.excel_output.expanduser().resolve() if args.excel_output else output.with_suffix(

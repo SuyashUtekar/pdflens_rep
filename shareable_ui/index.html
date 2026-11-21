@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f5f7fb" />
+    <title>PDFLens · Document workspace</title>
+    <link rel="stylesheet" href="/ui/styles.css" />
+    <link rel="stylesheet" href="/ui/core.css" />
+    <script src="/ui/app.js" defer></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" id="sidebar">
+        <a class="brand" href="#dashboard" data-page="dashboard" aria-label="PDFLens home">
+          <span class="brand-mark"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="M8 5.5h10.5L24 11v15.5H8z"/><path d="M18.5 5.5V11H24M12 16h8M12 20h8M12 24h5"/></svg></span>
+          <span><b>PDFLens</b><small>DOCUMENT WORKSPACE</small></span>
+        </a>
+        <div class="nav-label">WORKSPACE</div>
+        <nav class="side-nav" aria-label="Main navigation">
+          <a class="nav-item active" href="#dashboard" data-page="dashboard"><span class="nav-icon">⌂</span>Dashboard</a>
+          <a class="nav-item" href="#upload" data-page="upload"><span class="nav-icon">＋</span>Upload &amp; process</a>
+          <a class="nav-item" href="#package" data-page="package"><span class="nav-icon">▤</span>Processed package</a>
+        </nav>
+        <div class="nav-label nav-label-spaced">QUALITY</div>
+        <div class="nav-item nav-disabled" aria-disabled="true" title="Validation endpoints are not available in this service yet"><span class="nav-icon">◈</span>Comparison &amp; validation<span class="soon">Later</span></div>
+        <div class="sidebar-bottom">
+          <div class="connection-card"><span class="connection-dot" id="connectionDot"></span><div><b id="connectionText">Checking service</b><small>PDFLens API</small></div><button class="icon-button" id="refreshHealth" aria-label="Check service again" title="Check service">↻</button></div>
+          <p class="sidebar-foot">This workspace sends files only to the PDFLens service hosting this UI.</p>
+        </div>
+      </aside>
+
+      <main class="main-area">
+        <header class="topbar">
+          <button class="menu-button" id="menuButton" aria-label="Toggle navigation">☰</button>
+          <div class="breadcrumbs"><span>Workspace</span><i>/</i><b id="breadcrumbCurrent">Dashboard</b></div>
+          <div class="topbar-right"><span class="env-pill"><span></span>Connected workspace</span><div class="avatar" aria-label="User">S</div></div>
+        </header>
+
+        <div class="content-wrap">
+          <section class="page active" id="page-dashboard">
+            <div class="page-heading heading-row"><div><div class="eyebrow">DOCUMENT OPERATIONS</div><h1>PDF processing workspace</h1><p>Submit a PDF to hosted PDFLens and retrieve its result package.</p></div><button class="button button-primary" data-go="upload"><span>＋</span> Process a PDF</button></div>
+            <div class="notice notice-info"><span class="notice-icon">i</span><div><b>Connected to hosted PDFLens</b><p>This workspace submits PDFs and retrieves ZIP results through the three PDFLens APIs configured by the administrator. PDFLens does not provide request history, so the UI keeps only the current request in memory while this page is open.</p></div></div>
+            <div class="capability-row"><div class="capability-mark">✓</div><div><b>What this service does</b><p>Extracts requested document elements and returns the original PDF, a DOCX, metadata, and any generated snapshots in a ZIP archive.</p></div><a href="/docs" target="_blank" rel="noreferrer" class="inline-link">View API docs ↗</a></div>
+          </section>
+
+          <section class="page" id="page-upload">
+            <div class="page-heading"><div class="eyebrow">NEW EXTRACTION</div><h1>Upload &amp; process</h1><p>Choose a PDF and the content you want PDFLens to extract.</p></div>
+            <div class="upload-layout">
+              <div class="form-column">
+                <div class="panel">
+                  <div class="panel-heading"><span class="step-number">1</span><div><h2>Select a PDF</h2><p>PDF files only. The service checks the file before processing.</p></div></div>
+                  <label class="dropzone" id="dropzone" for="pdfFile"><input type="file" id="pdfFile" accept="application/pdf,.pdf" hidden /><span class="upload-icon"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M11 5h12l8 8v21H11z"/><path d="M23 5v9h8M20 28V18m-4 4 4-4 4 4"/></svg></span><b>Drop your PDF here</b><span>or <u>browse files</u></span><small>PDF format · File size limit is enforced by the service</small></label>
+                  <div class="selected-file hidden" id="selectedFile"><span class="file-icon">PDF</span><div class="file-meta"><b id="fileName"></b><small id="fileSize"></small></div><button class="icon-button remove-file" id="removeFile" aria-label="Remove file">×</button></div>
+                  <div class="field-error hidden" id="fileError"></div>
+                </div>
+                <div class="panel">
+                  <div class="panel-heading"><span class="step-number">2</span><div><h2>Choose configuration &amp; content</h2><p>Choose an administrator-provided configuration and extraction options.</p></div></div>
+                  <div class="config-field"><label for="configId">PDFLens configuration</label><select id="configId" required><option value="">Loading configurations…</option></select><small id="configHelp">Configuration IDs are supplied by the application administrator.</small><small id="callbackHelp" class="callback-help"></small></div>
+                  <div class="option-grid" id="optionGrid">
+                    <label class="option-card"><input type="checkbox" value="extract_tables" checked /><span class="checkmark"></span><span><b>Tables</b><small>Table extraction</small></span><span class="option-symbol">▦</span></label>
+                    <label class="option-card"><input type="checkbox" value="extract_images" checked /><span class="checkmark"></span><span><b>Images</b><small>Image extraction</small></span><span class="option-symbol">▧</span></label>
+                    <label class="option-card"><input type="checkbox" value="extract_header" checked /><span class="checkmark"></span><span><b>Headers</b><small>Header extraction</small></span><span class="option-symbol">↥</span></label>
+                    <label class="option-card"><input type="checkbox" value="extract_footer" checked /><span class="checkmark"></span><span><b>Footers</b><small>Footer extraction</small></span><span class="option-symbol">↧</span></label>
+                    <label class="option-card"><input type="checkbox" value="extract_hyperlinks" checked /><span class="checkmark"></span><span><b>Hyperlinks</b><small>Link extraction</small></span><span class="option-symbol">↗</span></label>
+                    <label class="option-card"><input type="checkbox" value="extract_footnotes" /><span class="checkmark"></span><span><b>Footnotes</b><small>Footnote extraction</small></span><span class="option-symbol">¹</span></label>
+                  </div>
+                  <p class="core-fields-note"><span>i</span> Options are sent exactly as selected. Footnotes are off by default.</p>
+                </div>
+                <div class="submit-row"><div class="submit-note"><span>🔒</span><span>The application stages the PDF in the configured shared folder so hosted PDFLens can read it. Expired staged files are cleaned when a later upload is submitted.</span></div><button class="button button-primary button-large" id="submitButton" disabled><span>Submit for processing</span><b>→</b></button></div>
+                <div class="progress-card hidden" id="progressCard" role="status"><span class="spinner"></span><div><b>Submitting request to PDFLens</b><p>Waiting for the configured submit API to return its request ID and status.</p></div></div>
+                <div class="submission-success hidden" id="submissionSuccess" role="status"><div class="success-check">✓</div><div class="submission-copy"><b>PDFLens accepted the request</b><p>Current status: <strong id="submissionStatus"></strong></p><small>Request ID: <code id="submissionRequestId"></code></small></div><button class="button button-secondary" id="retrieveSubmitted">Retrieve result</button></div>
+                <div class="progress-card result-polling-card hidden" id="resultPollingCard" role="status"><span class="spinner"></span><div><b>Waiting for the PDFLens processor</b><p id="resultPollingText">Checking for the ZIP result.</p><small id="resultPollingFootprint"></small></div></div>
+                <div class="notice notice-error hidden" id="resultPollingError" role="alert"><span class="notice-icon">!</span><div><b>Result not retrieved yet</b><p id="resultPollingErrorText"></p><small id="resultPollingErrorId"></small></div></div>
+                <div class="notice notice-error hidden" id="submitError" role="alert"><span class="notice-icon">!</span><div><b>We could not process this PDF</b><p id="submitErrorMessage"></p><small id="submitErrorId"></small></div></div>
+              </div>
+              <aside class="side-column"><div class="side-info-card"><div class="side-info-icon">✦</div><h3>What you'll receive</h3><p>The ZIP returned by PDFLens for this request.</p><div class="expected-list"><div><span class="expected-icon">ZIP</span><span><b>Result package</b><small>Retrieved using the request ID</small></span></div><div><span class="expected-icon docx">↔</span><span><b>Actual file inventory</b><small>Based on files inside the ZIP</small></span></div><div><span class="expected-icon json">✓</span><span><b>ZIP safety checks</b><small>Paths and archive size are checked</small></span></div></div><div class="side-note">If PDFLens reports queued or processing, the UI checks again at the configured interval until the ZIP arrives or the wait limit is reached.</div></div><div class="side-info-card compact-info"><h3>Connection settings</h3><p>API endpoints, authentication, storage path, callback URL, and valid configurations are loaded by the application from its environment file.</p></div></aside>
+            </div>
+          </section>
+
+          <section class="page" id="page-package">
+            <div class="page-heading"><div class="eyebrow">RESULT PACKAGE</div><h1>Processed package</h1><p>Retrieve a result from PDFLens using its request ID.</p></div>
+            <div id="packageEmpty" class="large-empty"><div class="empty-illustration">▤</div><h2>No result package loaded</h2><p>Submit a PDF first, then choose “Retrieve result” once the package is available from PDFLens.</p><button class="button button-primary" data-go="upload">Submit a PDF</button></div>
+            <div class="package-content hidden" id="packageContent"><div class="package-banner"><span class="package-icon">ZIP</span><div class="package-title"><div class="eyebrow">RESULT RECEIVED</div><h2 id="packageName"></h2><p><span id="packageRequest"></span><span class="dot-separator">·</span><span id="packageSize"></span><span class="dot-separator">·</span><span id="packageTime"></span></p></div><button class="button button-primary" id="downloadAgain">↓ Download ZIP</button></div><div class="stat-grid package-stats"><article class="stat-card"><div class="stat-label">Files in package</div><div class="stat-value" id="packageFileCount">0</div><div class="stat-hint">Read from the ZIP directory</div></article><article class="stat-card"><div class="stat-label">Document files</div><div class="stat-value" id="packageDocuments">0</div><div class="stat-hint">PDF and DOCX files</div></article><article class="stat-card"><div class="stat-label">Metadata files</div><div class="stat-value" id="packageMetadata">0</div><div class="stat-hint">JSON files</div></article><article class="stat-card"><div class="stat-label">Asset files</div><div class="stat-value" id="packageAssets">0</div><div class="stat-hint">Image and table snapshots</div></article></div><div class="section-heading"><div><h2>Package inventory</h2><p>Files actually present in the returned ZIP</p></div><span class="inventory-note">Inventory only · contents remain in the downloaded ZIP</span></div><div class="table-card"><div class="table-scroll"><table><thead><tr><th>FILE</th><th>TYPE</th><th>SIZE</th><th>CATEGORY</th></tr></thead><tbody id="packageRows"></tbody></table></div></div><div class="notice notice-info package-caveat"><span class="notice-icon">i</span><div><b>What this inventory shows</b><p>Names and sizes are read from the ZIP directory returned by the service. This screen does not preview or validate the semantic contents of the files.</p></div></div></div>
+          </section>
+        </div>
+        <footer class="footer"><span>PDFLens Document Workspace</span><span>Extraction response is generated by the connected service</span></footer>
+      </main>
+    </div>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  </body>
+</html>

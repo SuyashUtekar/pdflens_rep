@@ -1,0 +1,12 @@
+.config-field{display:grid;gap:6px;margin:0 0 13px}
+.config-field label{font-size:9px;font-weight:700;color:#62718a}
+.config-field select{width:100%;border:1px solid #dde4ee;border-radius:6px;padding:9px 10px;background:#fff;color:#35435b;font:10px "DM Sans",sans-serif}
+.config-field small{font-size:8px;color:#94a0b1}
+.callback-help{color:#71809a!important}
+.core-fields-note{display:flex;align-items:center;gap:7px;margin:13px 0 0;color:#77869c;font-size:9px}
+.core-fields-note span{width:15px;height:15px;border-radius:50%;background:#eef3ff;color:#5470dc;display:grid;place-items:center;font-size:9px;font-weight:700}
+.submission-success{display:flex;align-items:center;gap:11px;background:#eff8f3;border:1px solid #d7eddf;border-radius:9px;padding:13px}
+.success-check{width:24px;height:24px;display:grid;place-items:center;border-radius:50%;background:#d7f0e0;color:#218153;font-weight:700;flex:none}
+.submission-copy{min-width:0;flex:1}.submission-copy>b{display:block;font-size:10px;color:#38694f}.submission-copy>p{font-size:9px;color:#668772;margin:3px 0}.submission-copy strong{color:#355f47}.submission-copy small{font-size:8px;color:#83978a;word-break:break-all}.submission-copy code{font:8px ui-monospace,monospace}
+.result-polling-card small{display:block;margin-top:6px;color:#8291a8;font-size:8px;overflow-wrap:anywhere}.result-polling-card{margin-top:10px}
+@media(max-width:560px){.submission-success{align-items:flex-start;flex-wrap:wrap}.submission-copy{min-width:calc(100% - 40px)}.submission-success>.button{width:100%}}

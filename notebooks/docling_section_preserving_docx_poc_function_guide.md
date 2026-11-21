@@ -1,6 +1,6 @@
 # Function guide: Docling section-preserving DOCX POC
 
-This guide describes the current code in `docling_section_preserving_docx_poc.ipynb` and the chunking helpers in `chunking_strategy/sectionwise_chunking.py`. It explains what each function consumes, how it works, and which problem it addresses.
+This guide describes the current code in `notebooks/docling_section_preserving_docx_poc.ipynb` and the chunking helpers in `chunking_strategy/sectionwise_chunking.py`. The earlier pre-refactor notebook is retained under `notebooks/archive/`. It explains what each function consumes, how it works, and which problem it addresses.
 
 ## Processing overview
 

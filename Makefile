@@ -9,7 +9,7 @@ PORT ?= 8000
 # Keep every uv command on the same project environment.
 UV_ENV = UV_PROJECT_ENVIRONMENT=$(VENV)
 
-.PHONY: help install run dev health clean
+.PHONY: help install run dev health pdflens-health clean
 
 help: ## Show available project commands
 	@grep -E '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*## "} {printf "\033[36m%-12s\033[0m %s\n", $$1, $$2}'
@@ -25,6 +25,9 @@ dev: ## Run the API server with automatic reload
 
 health: ## Check the local health endpoint
 	curl --fail --silent --show-error http://$(HOST):$(PORT)/healthz
+
+pdflens-health: ## Check the hosted PDFLens health API through the UI gateway
+	curl --fail --silent --show-error http://$(HOST):$(PORT)/ui-api/health
 
 clean: ## Remove the configured virtual environment
 	rm -rf $(VENV)
