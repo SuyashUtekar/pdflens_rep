@@ -31,10 +31,10 @@ class ResultRequest(BaseModel):
         return value
 
 
-@router.get("/configurations")
-def configurations() -> dict[str, object]:
+@router.get("/settings")
+def ui_settings() -> dict[str, object]:
     return {
-        "configurations": list(settings.configs),
+        "configured": bool(settings.config_id),
         "file_manager_configured": bool(
             settings.file_manager_upload_url and "{file_id}" in settings.file_manager_download_url_template
         ),
@@ -55,7 +55,6 @@ def remote_health() -> dict[str, object]:
 @router.post("/jobs")
 async def submit_job(
     file: UploadFile = File(...),
-    config_id: str = Form(...),
     extract_tables: bool = Form(True),
     extract_images: bool = Form(True),
     extract_header: bool = Form(True),
@@ -63,9 +62,8 @@ async def submit_job(
     extract_hyperlinks: bool = Form(True),
     extract_footnotes: bool = Form(False),
 ) -> dict[str, object]:
-    approved_config = next((item for item in settings.configs if item["id"] == config_id), None)
-    if approved_config is None:
-        raise HTTPException(status_code=422, detail="Choose a configured PDFLens configuration.")
+    if not settings.config_id:
+        raise HTTPException(status_code=503, detail="PDFLENS_CONFIG_ID is not configured on the UI service.")
 
     content = await file.read(MAX_UPLOAD_BYTES + 1)
     try:
@@ -83,7 +81,7 @@ async def submit_job(
             file.content_type or "application/pdf",
         )
     except FileManagerError as exc:
-        logger.warning("file_manager_upload_failed config_label=%s reason=%s", approved_config["label"], exc)
+        logger.warning("file_manager_upload_failed error=%s", exc)
         raise HTTPException(
             status_code=exc.status_code,
             detail=str(exc),
@@ -92,7 +90,7 @@ async def submit_job(
     # PDFLens receives File Manager's download URL, never a browser or local filesystem path.
     upstream_body = {
         "file_path": file_record["download_url"],
-        "config_id": approved_config["id"],
+        "config_id": settings.config_id,
         "extract_tables": extract_tables,
         "extract_images": extract_images,
         "extract_header": extract_header,
@@ -105,21 +103,19 @@ async def submit_job(
     try:
         result = await run_in_threadpool(submit_pdf, upstream_body)
     except PdfLensUpstreamError as exc:
-        logger.warning("pdflens_submit_failed config_label=%s error=%s", approved_config["label"], exc)
+        logger.warning("pdflens_submit_failed error=%s", exc)
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
     logger.info(
-        "pdflens_submit_accepted request_id=%s file_id=%s config_label=%s",
+        "pdflens_submit_accepted request_id=%s file_id=%s",
         result["request_id"],
         file_record["file_id"],
-        approved_config["label"],
     )
     return {
         "request_id": result["request_id"],
         "status": result["status"],
         "filename": safe_filename(file.filename),
         "submitted_at": datetime.now(timezone.utc).isoformat(),
-        "config_label": approved_config["label"],
         "callback_configured": bool(settings.callback_url),
     }
 

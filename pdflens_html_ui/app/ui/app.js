@@ -5,7 +5,7 @@
   const $$ = (selector) => [...document.querySelectorAll(selector)];
   const state = {
     file: null, currentZip: null, currentPackage: null, currentSubmission: null,
-    health: null, configs: [], resultPollIntervalSeconds: 5, resultPollMaxWaitSeconds: 900,
+    health: null, configConfigured: false, resultPollIntervalSeconds: 5, resultPollMaxWaitSeconds: 900,
   };
 
   const prettyBytes = (bytes) => {
@@ -78,7 +78,7 @@
     $("#selectedFile").classList.remove("hidden");
     $("#fileName").textContent = safeText(file.name) || "Selected PDF";
     $("#fileSize").textContent = prettyBytes(file.size);
-    $("#submitButton").disabled = !$("#configId").value;
+    $("#submitButton").disabled = !state.file || !state.configConfigured;
   }
 
   function clearFileError() {
@@ -114,40 +114,25 @@
         : `The request could not be completed (HTTP ${status}). Try again or contact the administrator.`;
   }
 
-  async function loadConfigurations() {
-    const select = $("#configId");
-    const help = $("#configHelp");
+  async function loadUiSettings() {
     try {
-      const response = await fetch("/ui-api/configurations", { headers: { Accept: "application/json" }, cache: "no-store" });
+      const response = await fetch("/ui-api/settings", { headers: { Accept: "application/json" }, cache: "no-store" });
       const data = await response.json();
-      if (!response.ok) throw new Error("Configuration could not be loaded.");
-      state.configs = Array.isArray(data.configurations) ? data.configurations : [];
+      if (!response.ok) throw new Error("UI settings could not be loaded.");
+      state.configConfigured = data.configured === true && data.file_manager_configured === true;
       if (Number.isFinite(data.result_poll_interval_seconds) && data.result_poll_interval_seconds > 0) {
         state.resultPollIntervalSeconds = data.result_poll_interval_seconds;
       }
       if (Number.isFinite(data.result_poll_max_wait_seconds) && data.result_poll_max_wait_seconds > 0) {
         state.resultPollMaxWaitSeconds = data.result_poll_max_wait_seconds;
       }
-      select.replaceChildren();
-      if (!state.configs.length) {
-        select.add(new Option("No configurations are configured", ""));
-        help.textContent = "Ask the administrator to configure PDFLENS_CONFIGS_JSON in the environment file.";
-      } else {
-        select.add(new Option("Choose a configuration", ""));
-        state.configs.forEach((config) => select.add(new Option(config.label, config.id)));
-        help.textContent = "Configuration choices are managed in the application environment file.";
-      }
-      if (data.file_manager_configured === false) {
-        help.textContent = "File Manager upload and download URL settings are missing. Ask the administrator to configure them.";
-      }
       $("#callbackHelp").textContent = data.callback_configured
         ? "Callback URL: configured by the administrator."
         : "Callback URL: not configured (optional).";
     } catch {
-      select.replaceChildren(new Option("Configuration unavailable", ""));
-      help.textContent = "Check the application environment configuration.";
+      state.configConfigured = false;
     }
-    $("#submitButton").disabled = !state.file || !select.value;
+    $("#submitButton").disabled = !state.file || !state.configConfigured;
   }
 
   function responseFilename(disposition, fallback) {
@@ -217,7 +202,7 @@
   }
 
   async function submit() {
-    if (!state.file || !$("#configId").value) return;
+    if (!state.file || !state.configConfigured) return;
     $("#submitError").classList.add("hidden");
     $("#submissionSuccess").classList.add("hidden");
     $("#resultPollingError").classList.add("hidden");
@@ -225,7 +210,6 @@
     $("#submitButton").disabled = true;
     const body = new FormData();
     body.append("file", state.file, state.file.name);
-    body.append("config_id", $("#configId").value);
     for (const [name, value] of Object.entries(extractionOptions())) body.append(name, String(value));
     const started = new Date().toISOString();
     let requestId = "";
@@ -242,7 +226,7 @@
       const record = {
         filename: safeText(data.filename || state.file.name), requestId,
         submittedAt: data.submitted_at || started, outcome: "submitted",
-        statusText: String(data.status), config: safeText(data.config_label || $("#configId option:checked").textContent),
+        statusText: String(data.status),
         size: state.file.size, callbackConfigured: Boolean(data.callback_configured),
         extractionOptions: extractionOptions(),
       };
@@ -260,7 +244,7 @@
       $("#submitError").classList.remove("hidden");
     } finally {
       $("#progressCard").classList.add("hidden");
-      $("#submitButton").disabled = !state.file || !$("#configId").value;
+      $("#submitButton").disabled = !state.file || !state.configConfigured;
     }
   }
 
@@ -420,7 +404,6 @@
     $("#menuButton").addEventListener("click", () => $("#sidebar").classList.toggle("open"));
     $("#refreshHealth").addEventListener("click", checkHealth);
     $("#pdfFile").addEventListener("change", (event) => setFile(event.target.files?.[0]));
-    $("#configId").addEventListener("change", () => { $("#submitButton").disabled = !state.file || !$("#configId").value; });
     $("#removeFile").addEventListener("click", resetFile);
     $("#submitButton").addEventListener("click", submit);
     $("#retrieveSubmitted").addEventListener("click", (event) => retrieveResult(state.currentSubmission, event.currentTarget));
@@ -432,7 +415,7 @@
       setFile(event.dataTransfer.files?.[0]);
     });
     checkHealth();
-    loadConfigurations();
+    loadUiSettings();
     navigate("dashboard");
   }
 

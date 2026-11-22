@@ -30,27 +30,18 @@ def _load_env_file() -> None:
 _load_env_file()
 
 
-def _parse_configs(value: str) -> tuple[dict[str, str], ...]:
-    if not value.strip():
-        return ()
+def _legacy_config_id() -> str:
+    """Read one ID from the old JSON setting while deployments migrate to PDFLENS_CONFIG_ID."""
+    value = os.getenv("PDFLENS_CONFIGS_JSON", "").strip()
+    if not value:
+        return ""
     try:
         raw: Any = json.loads(value)
     except json.JSONDecodeError as exc:
-        raise RuntimeError("PDFLENS_CONFIGS_JSON must be a JSON array of {id, label} objects.") from exc
-    if not isinstance(raw, list):
-        raise RuntimeError("PDFLENS_CONFIGS_JSON must be a JSON array.")
-    configs: list[dict[str, str]] = []
-    seen: set[str] = set()
-    for item in raw:
-        if not isinstance(item, dict):
-            raise RuntimeError("Each PDFLens config entry must contain an id and label.")
-        config_id = str(item.get("id", "")).strip()
-        label = str(item.get("label", "")).strip()
-        if not config_id or not label or config_id in seen:
-            raise RuntimeError("Each PDFLens config needs a unique id and a non-empty label.")
-        seen.add(config_id)
-        configs.append({"id": config_id, "label": label})
-    return tuple(configs)
+        raise RuntimeError("PDFLENS_CONFIGS_JSON must be valid JSON during migration to PDFLENS_CONFIG_ID.") from exc
+    if isinstance(raw, list) and raw and isinstance(raw[0], dict):
+        return str(raw[0].get("id", "")).strip()
+    return ""
 
 
 @dataclass(frozen=True)
@@ -76,12 +67,12 @@ class Settings:
     file_manager_jwt_token: str = os.getenv("FILE_MANAGER_JWT_TOKEN", "").strip()
     file_manager_jwt_header: str = os.getenv("FILE_MANAGER_JWT_HEADER", "Authorization").strip()
     file_manager_jwt_prefix: str = os.getenv("FILE_MANAGER_JWT_PREFIX", "Bearer").strip()
+    config_id: str = os.getenv("PDFLENS_CONFIG_ID", "").strip() or _legacy_config_id()
     timeout_seconds: float = float(os.getenv("PDFLENS_API_TIMEOUT_SECONDS", "180"))
     result_poll_interval_seconds: float = float(os.getenv("PDFLENS_RESULT_POLL_INTERVAL_SECONDS", "5"))
     result_poll_max_wait_seconds: int = int(os.getenv("PDFLENS_RESULT_POLL_MAX_WAIT_SECONDS", "900"))
     callback_url: str = os.getenv("PDFLENS_CALLBACK_URL", "").strip()
     max_result_bytes: int = int(os.getenv("PDFLENS_MAX_RESULT_ZIP_BYTES", str(500 * 1024 * 1024)))
-    configs: tuple[dict[str, str], ...] = _parse_configs(os.getenv("PDFLENS_CONFIGS_JSON", ""))
 
     def __post_init__(self) -> None:
         if self.result_poll_interval_seconds < 1:

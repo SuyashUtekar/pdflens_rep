@@ -19,7 +19,7 @@ This is an isolated, runnable copy of the older HTML/CSS/JavaScript PDFLens UI. 
 
 Use Python 3.11 or newer and install `uv`. From this folder:
 
-1. Create `.env` from `.env.example` and fill in the File Manager upload URL, File Manager download URL template, PDFLens endpoint URLs, JWT, and configuration IDs. Put the raw JWT in `PDFLENS_JWT_TOKEN` without the Bearer prefix; the backend adds the prefix for service calls. If File Manager uses a different token, set `FILE_MANAGER_JWT_TOKEN`.
+1. Create `.env` from `.env.example` and fill in the File Manager upload URL, File Manager download URL template, PDFLens endpoint URLs, JWT, and one `PDFLENS_CONFIG_ID`. The configuration ID stays server-side and is not displayed in the UI. Put the raw JWT in `PDFLENS_JWT_TOKEN` without the Bearer prefix; the backend adds the prefix for service calls. If File Manager uses a different token, set `FILE_MANAGER_JWT_TOKEN`.
 2. Ensure the File Manager download URL is reachable and authorized for the PDFLens processor, since PDFLens will fetch the PDF from that URL.
 3. Install dependencies and start the UI:
 
