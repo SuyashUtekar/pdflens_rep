@@ -6,7 +6,8 @@ This is an isolated, runnable copy of the older HTML/CSS/JavaScript PDFLens UI. 
 
 - `app/ui/` — HTML, CSS, and browser JavaScript
 - `app/main.py` — serves the UI at `/ui/` and mounts the UI API routes
-- `app/api/ui_gateway.py` — validates and stages uploads, then handles UI-facing requests
+- `app/api/ui_gateway.py` — validates uploads, coordinates File Manager and PDFLens, and handles UI-facing requests
+- `app/integrations/file_manager.py` — uploads the PDF to File Manager and builds its download URL
 - `app/integrations/pdflens.py` — calls the hosted submit, result, and health APIs
 - `app/config.py` — loads server-side settings from `.env`
 - `app/security/pdf.py` — PDF upload validation and safe filenames
@@ -18,8 +19,8 @@ This is an isolated, runnable copy of the older HTML/CSS/JavaScript PDFLens UI. 
 
 Use Python 3.11 or newer and install `uv`. From this folder:
 
-1. Create `.env` from `.env.example` and fill it with the exact endpoint URLs, JWT, configuration IDs, and shared storage path from your PDFLens administrator. Put the raw JWT in PDFLENS_JWT_TOKEN without the Bearer prefix; the backend adds the configured prefix and sends it in the authorization header for hosted API calls. If the JWT expires, replace it in `.env` and restart this app.
-2. Ensure the hosted PDFLens service can read the configured shared storage path. If it runs on another machine or container, mount the same storage at the same path there.
+1. Create `.env` from `.env.example` and fill in the File Manager upload URL, File Manager download URL template, PDFLens endpoint URLs, JWT, and configuration IDs. Put the raw JWT in `PDFLENS_JWT_TOKEN` without the Bearer prefix; the backend adds the prefix for service calls. If File Manager uses a different token, set `FILE_MANAGER_JWT_TOKEN`.
+2. Ensure the File Manager download URL is reachable and authorized for the PDFLens processor, since PDFLens will fetch the PDF from that URL.
 3. Install dependencies and start the UI:
 
    ```sh

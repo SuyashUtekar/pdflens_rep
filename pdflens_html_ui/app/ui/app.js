@@ -137,6 +137,9 @@
         state.configs.forEach((config) => select.add(new Option(config.label, config.id)));
         help.textContent = "Configuration choices are managed in the application environment file.";
       }
+      if (data.file_manager_configured === false) {
+        help.textContent = "File Manager upload and download URL settings are missing. Ask the administrator to configure them.";
+      }
       $("#callbackHelp").textContent = data.callback_configured
         ? "Callback URL: configured by the administrator."
         : "Callback URL: not configured (optional).";

@@ -58,6 +58,11 @@ class Settings:
     submit_url: str = os.getenv("PDFLENS_API_SUBMIT_URL", "").strip()
     result_url: str = os.getenv("PDFLENS_API_RESULT_URL", "").strip()
     health_url: str = os.getenv("PDFLENS_API_HEALTH_URL", "").strip()
+    file_manager_upload_url: str = os.getenv("FILE_MANAGER_API_UPLOAD_URL", "").strip()
+    file_manager_download_url_template: str = os.getenv(
+        "FILE_MANAGER_API_DOWNLOAD_URL_TEMPLATE", ""
+    ).strip()
+    file_manager_upload_field: str = os.getenv("FILE_MANAGER_UPLOAD_FIELD", "files").strip() or "files"
     result_method: str = os.getenv("PDFLENS_API_RESULT_METHOD", "POST").strip().upper()
     health_method: str = os.getenv("PDFLENS_API_HEALTH_METHOD", "GET").strip().upper()
     jwt_token: str = os.getenv("PDFLENS_JWT_TOKEN", "").strip()
@@ -68,14 +73,13 @@ class Settings:
         "PDFLENS_JWT_PREFIX", os.getenv("PDFLENS_API_KEY_PREFIX", "Bearer")
     ).strip()
     api_key: str = os.getenv("PDFLENS_API_KEY", "").strip()
+    file_manager_jwt_token: str = os.getenv("FILE_MANAGER_JWT_TOKEN", "").strip()
+    file_manager_jwt_header: str = os.getenv("FILE_MANAGER_JWT_HEADER", "Authorization").strip()
+    file_manager_jwt_prefix: str = os.getenv("FILE_MANAGER_JWT_PREFIX", "Bearer").strip()
     timeout_seconds: float = float(os.getenv("PDFLENS_API_TIMEOUT_SECONDS", "180"))
     result_poll_interval_seconds: float = float(os.getenv("PDFLENS_RESULT_POLL_INTERVAL_SECONDS", "5"))
     result_poll_max_wait_seconds: int = int(os.getenv("PDFLENS_RESULT_POLL_MAX_WAIT_SECONDS", "900"))
     callback_url: str = os.getenv("PDFLENS_CALLBACK_URL", "").strip()
-    shared_storage_dir: Path = Path(os.getenv("PDFLENS_SHARED_STORAGE_DIR", "./data/pdflens-shared"))
-    staging_directory_mode: int = int(os.getenv("PDFLENS_STAGING_DIRECTORY_MODE", "750"), 8)
-    staging_file_mode: int = int(os.getenv("PDFLENS_STAGING_FILE_MODE", "640"), 8)
-    staging_retention_hours: int = int(os.getenv("PDFLENS_STAGING_RETENTION_HOURS", "168"))
     max_result_bytes: int = int(os.getenv("PDFLENS_MAX_RESULT_ZIP_BYTES", str(500 * 1024 * 1024)))
     configs: tuple[dict[str, str], ...] = _parse_configs(os.getenv("PDFLENS_CONFIGS_JSON", ""))
 
@@ -89,6 +93,11 @@ class Settings:
     def auth_token(self) -> str:
         """Prefer a JWT, while accepting the older API-key variable as a fallback."""
         return self.jwt_token or self.api_key
+
+    @property
+    def file_manager_auth_token(self) -> str:
+        """Use File Manager's own token when supplied, otherwise reuse the service JWT."""
+        return self.file_manager_jwt_token or self.auth_token
 
 
 settings = Settings()

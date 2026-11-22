@@ -1,11 +1,8 @@
 from __future__ import annotations
 
 import logging
-import shutil
 import time
-import uuid
 from datetime import datetime, timezone
-from pathlib import Path
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import JSONResponse, Response
@@ -13,12 +10,12 @@ from pydantic import BaseModel, Field, field_validator
 from starlette.concurrency import run_in_threadpool
 
 from app.config import settings
+from app.integrations.file_manager import FileManagerError, upload_file
 from app.integrations.pdflens import PdfLensUpstreamError, health_check, retrieve_result, submit_pdf
 from app.security.pdf import MAX_UPLOAD_BYTES, safe_filename, validate_pdf
 
 logger = logging.getLogger("pdflens.ui_gateway")
 router = APIRouter(prefix="/ui-api", tags=["PDFLens UI gateway"])
-_OWNED_STAGING_DIR = "pdflens-ui-uploads"
 
 
 class ResultRequest(BaseModel):
@@ -34,27 +31,13 @@ class ResultRequest(BaseModel):
         return value
 
 
-def _stage_root() -> Path:
-    return settings.shared_storage_dir.expanduser().resolve() / _OWNED_STAGING_DIR
-
-
-def _cleanup_expired_staging(root: Path) -> None:
-    """Remove only this UI gateway's old upload directories."""
-    if settings.staging_retention_hours <= 0 or not root.is_dir():
-        return
-    cutoff = time.time() - settings.staging_retention_hours * 3600
-    for child in root.iterdir():
-        try:
-            if child.is_dir() and not child.is_symlink() and child.stat().st_mtime < cutoff:
-                shutil.rmtree(child)
-        except OSError:
-            logger.warning("staging_cleanup_failed directory_name=%s", child.name)
-
-
 @router.get("/configurations")
 def configurations() -> dict[str, object]:
     return {
         "configurations": list(settings.configs),
+        "file_manager_configured": bool(
+            settings.file_manager_upload_url and "{file_id}" in settings.file_manager_download_url_template
+        ),
         "callback_configured": bool(settings.callback_url),
         "result_poll_interval_seconds": settings.result_poll_interval_seconds,
         "result_poll_max_wait_seconds": settings.result_poll_max_wait_seconds,
@@ -92,28 +75,23 @@ async def submit_job(
     except ValueError as exc:
         raise HTTPException(status_code=415, detail="Choose a valid PDF file.") from exc
 
-    root = _stage_root()
-    job_directory = root / uuid.uuid4().hex
-    staged_file = job_directory / safe_filename(file.filename)
     try:
-        root.mkdir(parents=True, exist_ok=True)
-        _cleanup_expired_staging(root)
-        job_directory.mkdir(mode=settings.staging_directory_mode)
-        job_directory.chmod(settings.staging_directory_mode)
-        staged_file.write_bytes(content)
-        staged_file.chmod(settings.staging_file_mode)
-    except OSError as exc:
-        logger.error("pdf_staging_failed config_label=%s error_type=%s",
-                     approved_config["label"], type(exc).__name__)
-        shutil.rmtree(job_directory, ignore_errors=True)
+        file_record = await run_in_threadpool(
+            upload_file,
+            content,
+            safe_filename(file.filename),
+            file.content_type or "application/pdf",
+        )
+    except FileManagerError as exc:
+        logger.warning("file_manager_upload_failed config_label=%s reason=%s", approved_config["label"], exc)
         raise HTTPException(
-            status_code=503,
-            detail="The upload could not be placed in storage shared with PDFLens. Check the configured shared path.",
+            status_code=exc.status_code,
+            detail=str(exc),
         ) from exc
 
-    # The path is sent only from this backend; it is never returned to the browser.
+    # PDFLens receives File Manager's download URL, never a browser or local filesystem path.
     upstream_body = {
-        "file_path": str(staged_file.resolve()),
+        "file_path": file_record["download_url"],
         "config_id": approved_config["id"],
         "extract_tables": extract_tables,
         "extract_images": extract_images,
@@ -130,7 +108,12 @@ async def submit_job(
         logger.warning("pdflens_submit_failed config_label=%s error=%s", approved_config["label"], exc)
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
-    logger.info("pdflens_submit_accepted request_id=%s config_label=%s", result["request_id"], approved_config["label"])
+    logger.info(
+        "pdflens_submit_accepted request_id=%s file_id=%s config_label=%s",
+        result["request_id"],
+        file_record["file_id"],
+        approved_config["label"],
+    )
     return {
         "request_id": result["request_id"],
         "status": result["status"],

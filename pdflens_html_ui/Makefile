@@ -12,7 +12,7 @@ install: ## Create environment and install dependencies
 	$(UV) sync
 
 run: ## Start the UI and its PDFLens API gateway
-	$(UV) run uvicorn app.main:app --host $(HOST) --port $(PORT)
+	.venv/bin/uvicorn app.main:app --host $(HOST) --port $(PORT)
 
 health: ## Check this UI service
 	curl --fail --silent --show-error http://127.0.0.1:$(PORT)/healthz
