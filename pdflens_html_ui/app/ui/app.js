@@ -8,9 +8,9 @@
     health: null, configConfigured: false, previewObjectUrl: null,
     pageCount: null, pageCountAvailable: false, pageCountPending: false, pageInfoRequest: 0,
     resultPollIntervalSeconds: 5, resultPollMaxWaitSeconds: 900,
-    comparePage: 1, compareMetadata: null, compareMetadataLoaded: false,
-    compareDocxPages: null, compareDocxParagraphs: null, compareDocxHasPageMarkers: false, compareDocxUsesBookmarks: false,
-    comparePdfUrl: null, compareAssetUrls: [], compareRenderId: 0,
+    comparePage: 1, compareMetadata: null, compareMetadataLoaded: false, compareMetadataPromise: null,
+    compareDocxPages: null, compareDocxParagraphs: null, compareDocxHasPageMarkers: false, compareDocxUsesBookmarks: false, compareDocxPromise: null,
+    comparePdfUrl: null, comparePdfUrls: new Set(), compareAssetUrls: [], compareRenderId: 0, comparePageRenderId: 0,
   };
 
   const prettyBytes = (bytes) => {
@@ -784,14 +784,18 @@
 
   function resetPageComparison(record) {
     state.compareRenderId += 1;
-    if (state.comparePdfUrl) URL.revokeObjectURL(state.comparePdfUrl);
-    state.comparePdfUrl = record.sourcePdf ? URL.createObjectURL(record.sourcePdf) : null;
+    state.comparePageRenderId += 1;
+    for (const url of state.comparePdfUrls) URL.revokeObjectURL(url);
+    state.comparePdfUrls.clear();
+    state.comparePdfUrl = null;
     state.compareMetadata = null;
     state.compareMetadataLoaded = false;
+    state.compareMetadataPromise = null;
     state.compareDocxPages = null;
     state.compareDocxParagraphs = null;
     state.compareDocxHasPageMarkers = false;
     state.compareDocxUsesBookmarks = false;
+    state.compareDocxPromise = null;
     state.comparePage = record.pageRange?.start || 1;
     clearComparisonAssetUrls();
   }
@@ -812,28 +816,38 @@
   }
 
   async function loadComparisonMetadata() {
-    if (state.compareMetadataLoaded) return state.compareMetadata;
+    if (state.compareMetadataPromise) return state.compareMetadataPromise;
     state.compareMetadataLoaded = true;
-    if (!state.currentZip) return null;
-    const candidates = (state.currentPackage?.files || []).filter((file) => fileExtension(file.name) === "json")
-      .sort((left, right) => {
-        const rank = (file) => /^meta\.json$/i.test(file.name.split("/").pop()) ? 0 : /(?:^|[_-])metadata\.json$/i.test(file.name.split("/").pop()) ? 1 : /metadata/i.test(file.name) ? 2 : 3;
-        return rank(left) - rank(right);
-      });
-    for (const entry of candidates) {
-      try {
-        const parsed = JSON.parse(await (await readZipEntry(state.currentZip, entry)).text());
-        if (Array.isArray(parsed) || (parsed && Array.isArray(parsed.pages))) { state.compareMetadata = parsed; break; }
-      } catch { /* try another JSON file in the package */ }
-    }
-    return state.compareMetadata;
+    state.compareMetadataPromise = (async () => {
+      const zip = state.currentZip;
+      const packageRecord = state.currentPackage;
+      if (!zip || !packageRecord) return null;
+      const candidates = (packageRecord.files || []).filter((file) => fileExtension(file.name) === "json")
+        .sort((left, right) => {
+          const rank = (file) => /^meta\.json$/i.test(file.name.split("/").pop()) ? 0 : /(?:^|[_-])metadata\.json$/i.test(file.name.split("/").pop()) ? 1 : /metadata/i.test(file.name) ? 2 : 3;
+          return rank(left) - rank(right);
+        });
+      for (const entry of candidates) {
+        try {
+          const parsed = JSON.parse(await (await readZipEntry(zip, entry)).text());
+          if (zip !== state.currentZip || packageRecord !== state.currentPackage) return null;
+          if (Array.isArray(parsed) || (parsed && Array.isArray(parsed.pages))) { state.compareMetadata = parsed; break; }
+        } catch { /* try another JSON file in the package */ }
+      }
+      return state.compareMetadata;
+    })();
+    return state.compareMetadataPromise;
   }
 
   async function loadComparisonDocxPages() {
     if (state.compareDocxPages) return state.compareDocxPages;
-    const entry = state.currentPackage?.files?.find((file) => fileExtension(file.name) === "docx");
-    if (!entry || !state.currentZip) return null;
-    const archive = await readZipEntry(state.currentZip, entry);
+    if (state.compareDocxPromise) return state.compareDocxPromise;
+    state.compareDocxPromise = (async () => {
+    const zip = state.currentZip;
+    const packageRecord = state.currentPackage;
+    const entry = packageRecord?.files?.find((file) => fileExtension(file.name) === "docx");
+    if (!entry || !zip) return null;
+    const archive = await readZipEntry(zip, entry);
     const contents = await readZipDirectory(archive);
     const documentEntry = contents.find((file) => file.name === "word/document.xml");
     if (!documentEntry) return null;
@@ -877,11 +891,14 @@
         appendText(currentPage, text, "");
       }
     }
+    if (zip !== state.currentZip || packageRecord !== state.currentPackage) return null;
     state.compareDocxPages = pages;
     state.compareDocxParagraphs = allParagraphs;
     state.compareDocxHasPageMarkers = hasBookmarks || pages.size > 1;
     state.compareDocxUsesBookmarks = hasBookmarks;
     return pages;
+    })();
+    return state.compareDocxPromise;
   }
 
   function metadataPageForSourcePage(metadata, sourcePage, record) {
@@ -960,18 +977,24 @@
       article.append(card);
     }
 
-    appendCompareText(article, "h4", "compare-section-title", "Footnotes and hyperlinks");
+    appendCompareText(article, "h4", "compare-section-title", "Footnotes");
     const footnotes = Array.isArray(page.footnote) ? page.footnote : [];
     if (!footnotes.length) appendCompareText(article, "p", "compare-no-content", "No footnotes are listed for this page.");
     for (const [index, footnote] of footnotes.entries()) {
       const text = typeof footnote === "string" ? footnote : footnote?.text || JSON.stringify(footnote);
-      appendCompareText(article, "p", "compare-element-text", `Footnote ${index + 1}: ${text}`);
+      const card = document.createElement("article"); card.className = "compare-element-card compare-footnote-card";
+      appendCompareText(card, "span", "compare-element-type", `Footnote ${index + 1}`);
+      appendCompareText(card, "p", "compare-element-text", text);
+      article.append(card);
     }
+
+    appendCompareText(article, "h4", "compare-section-title", "Hyperlinks");
     const hyperlinks = Array.isArray(page.hyperlink) ? page.hyperlink : [];
     if (!hyperlinks.length) appendCompareText(article, "p", "compare-no-content", "No hyperlinks are listed for this page.");
     for (const linkData of hyperlinks) {
       const row = document.createElement("div"); row.className = "compare-hyperlink";
-      appendCompareText(row, "p", "", linkData.text || linkData.uri || "Hyperlink");
+      const description = [linkData.text, linkData.page_number ? `Page ${linkData.page_number}` : "", Number.isInteger(linkData.hyperlink_index) ? `Link ${linkData.hyperlink_index}` : ""].filter(Boolean).join(" · ");
+      appendCompareText(row, "p", "", description || linkData.uri || "Hyperlink");
       if (linkData.uri) {
         const link = document.createElement("a"); link.href = String(linkData.uri); link.target = "_blank"; link.rel = "noreferrer"; link.textContent = String(linkData.uri); row.append(link);
       }
@@ -1004,6 +1027,25 @@
 
   function comparisonTokens(text) {
     return String(text || "").toLocaleLowerCase().match(/[\p{L}\p{N}]+/gu) || [];
+  }
+
+  function fitDocxContentToPane() {
+    const container = $("#compareOutputBody");
+    const sheet = container?.querySelector(".compare-docx-page");
+    if (!sheet || !container.classList.contains("compare-docx-fit")) return;
+    sheet.style.transform = "none";
+    const availableWidth = Math.max(1, container.clientWidth - 16);
+    const availableHeight = Math.max(1, container.clientHeight - 16);
+    sheet.style.width = `${availableWidth}px`;
+    sheet.style.maxWidth = "none";
+    sheet.style.minHeight = "0";
+    const contentHeight = Math.max(sheet.scrollHeight, 1);
+    const scale = Math.min(1, availableHeight / contentHeight);
+    const scaledWidth = availableWidth * scale;
+    sheet.style.left = `${Math.max(8, (container.clientWidth - scaledWidth) / 2)}px`;
+    sheet.style.top = "8px";
+    sheet.style.transformOrigin = "top left";
+    sheet.style.transform = `scale(${scale})`;
   }
 
   function mapDocxParagraphsToMetadataPages(paragraphs, metadata, record) {
@@ -1040,6 +1082,7 @@
     const view = $("#compareOutputView").value;
     const record = state.currentPackage;
     const pageNumber = state.comparePage;
+    container.classList.toggle("compare-docx-fit", view === "docx");
     $("#compareOutputPageLabel").textContent = `Showing output for source page ${pageNumber}`;
     container.replaceChildren();
     const loading = document.createElement("p"); loading.className = "preview-loading"; loading.textContent = "Opening page content…"; container.append(loading);
@@ -1125,6 +1168,7 @@
         node.textContent = paragraph.text; article.append(node);
       }
       container.replaceChildren(article);
+      requestAnimationFrame(fitDocxContentToPane);
     } catch (error) {
       if (isCurrent()) showCompareMessage(error.message || "Could not open the DOCX page content.");
     }
@@ -1136,14 +1180,15 @@
   }
 
   async function renderPageComparison() {
+    const pageRenderId = ++state.comparePageRenderId;
     const record = state.currentPackage;
+    const requestedPage = state.comparePage;
     const ready = Boolean(record?.sourcePdf && state.currentZip);
     $("#validationEmpty").classList.toggle("hidden", ready);
     $("#pageCompare").classList.toggle("hidden", !ready);
     if (!ready) return;
     await loadComparisonMetadata();
-    if (record !== state.currentPackage) return;
-    if (!state.comparePdfUrl) state.comparePdfUrl = URL.createObjectURL(record.sourcePdf);
+    if (record !== state.currentPackage || pageRenderId !== state.comparePageRenderId || requestedPage !== state.comparePage) return;
     const bounds = sourcePageBounds(record);
     state.comparePage = Math.max(bounds.start, Math.min(bounds.end, Number(state.comparePage) || bounds.start));
     $("#compareDocumentName").textContent = record.filename || record.sourcePdf.name;
@@ -1155,7 +1200,17 @@
     $("#comparePageTotal").textContent = `of ${bounds.end}`;
     $("#previousComparePage").disabled = state.comparePage <= bounds.start;
     $("#nextComparePage").disabled = state.comparePage >= bounds.end;
-    $("#comparePdfFrame").src = `${state.comparePdfUrl}#page=${state.comparePage}&toolbar=0&navpanes=0`;
+    const frame = $("#comparePdfFrame");
+    const pdfUrl = URL.createObjectURL(record.sourcePdf);
+    state.comparePdfUrl = pdfUrl;
+    state.comparePdfUrls.add(pdfUrl);
+    frame.onload = () => {
+      if (state.comparePdfUrl !== pdfUrl) return;
+      for (const oldUrl of state.comparePdfUrls) {
+        if (oldUrl !== pdfUrl) { URL.revokeObjectURL(oldUrl); state.comparePdfUrls.delete(oldUrl); }
+      }
+    };
+    frame.src = `${pdfUrl}#page=${state.comparePage}&toolbar=0&navpanes=0`;
     renderComparisonOutput();
   }
 
@@ -1195,6 +1250,7 @@
     $("#comparePageNumber").addEventListener("change", resetComparisonPage);
     $("#comparePageNumber").addEventListener("keydown", (event) => { if (event.key === "Enter") resetComparisonPage(); });
     $("#compareOutputView").addEventListener("change", renderComparisonOutput);
+    window.addEventListener("resize", fitDocxContentToPane);
     $("#retrieveSubmitted").addEventListener("click", (event) => retrieveResult(state.currentSubmission, event.currentTarget));
     $("#closePreview").addEventListener("click", closePreview);
     $("#previewModal").addEventListener("click", (event) => {
