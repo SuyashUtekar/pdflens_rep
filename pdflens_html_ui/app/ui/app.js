@@ -7,9 +7,9 @@
     file: null, currentZip: null, currentPackage: null, currentSubmission: null,
     health: null, configConfigured: false, previewObjectUrl: null,
     pageCount: null, pageCountAvailable: false, pageCountPending: false, pageInfoRequest: 0,
-    resultPollIntervalSeconds: 5, resultPollMaxWaitSeconds: 900,
-    comparePage: 1, compareMetadata: null, compareMetadataLoaded: false, compareMetadataPromise: null,
-    compareDocxPages: null, compareDocxParagraphs: null, compareDocxHasPageMarkers: false, compareDocxUsesBookmarks: false, compareDocxPromise: null,
+    resultPollIntervalSeconds: 5, resultPollMaxWaitSeconds: 900, resultPolling: false,
+    comparePage: 1, compareMetadata: null, compareMetadataPromise: null,
+    compareDocxPages: null, compareDocxParagraphs: null, compareDocxUsesBookmarks: false, compareDocxPromise: null,
     comparePdfUrl: null, comparePdfUrls: new Set(), compareAssetUrls: [], compareRenderId: 0, comparePageRenderId: 0,
   };
 
@@ -184,6 +184,47 @@
     return { start, end, error: "" };
   }
 
+  function recordRequestAudit(record, status, detail, attempt = null) {
+    if (!record) return;
+    record.auditTrail ||= [];
+    record.auditTrail.push({ status: safeText(status) || "Status update", detail: safeText(detail), attempt, timestamp: new Date().toISOString() });
+    renderRequestAudit(record);
+  }
+
+  function renderRequestAudit(record) {
+    if (!record?.requestId) return;
+    for (const panel of $$('[data-request-audit]')) {
+      panel.classList.remove("hidden");
+      panel.querySelector(".audit-request-id").textContent = record.requestId;
+      const events = panel.querySelector(".audit-events");
+      events.replaceChildren();
+      for (const event of record.auditTrail || []) {
+        const item = document.createElement("li");
+        item.className = "audit-event";
+        const header = document.createElement("div");
+        header.className = "audit-event-header";
+        const status = document.createElement("b");
+        status.textContent = event.status;
+        const timestamp = document.createElement("time");
+        timestamp.dateTime = event.timestamp;
+        timestamp.textContent = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "medium" }).format(new Date(event.timestamp));
+        header.append(status, timestamp);
+        item.append(header);
+        if (event.detail) {
+          const detail = document.createElement("p");
+          detail.textContent = event.detail;
+          item.append(detail);
+        }
+        if (event.attempt !== null && event.attempt !== undefined) {
+          const attempt = document.createElement("small");
+          attempt.textContent = `Check attempt ${event.attempt}`;
+          item.append(attempt);
+        }
+        events.append(item);
+      }
+    }
+  }
+
   function handlePageRangeInput(event) {
     const input = event.currentTarget;
     const error = $("#pageRangeError");
@@ -221,8 +262,8 @@
         state.resultPollMaxWaitSeconds = data.result_poll_max_wait_seconds;
       }
       $("#callbackHelp").textContent = data.callback_configured
-        ? "Callback URL: configured by the administrator."
-        : "Callback URL: not configured (optional).";
+        ? "Optional. Leave blank to use the callback URL configured by the administrator."
+        : "Optional. Leave blank if PDFLens should not send callback updates.";
     } catch {
       state.configConfigured = false;
     }
@@ -564,6 +605,8 @@
       body.append("start_page", String(pageRange.start));
       body.append("end_page", String(pageRange.end));
     }
+    const callbackUrl = $("#callbackUrl").value.trim();
+    if (callbackUrl) body.append("callback_url", callbackUrl);
     const started = new Date().toISOString();
     let requestId = "";
     try {
@@ -584,7 +627,7 @@
         sourcePageCount: Number.isInteger(data.page_count) ? data.page_count : state.pageCount,
         pageRange: pageRange.start === null ? null : { start: pageRange.start, end: pageRange.end },
         size: state.file.size, callbackConfigured: Boolean(data.callback_configured),
-        extractionOptions: extractionOptions(),
+        extractionOptions: extractionOptions(), auditTrail: [],
       };
       state.currentSubmission = record;
       $("#submissionStatus").textContent = safeText(record.statusText);
@@ -592,6 +635,10 @@
       $("#submissionSuccess").classList.remove("hidden");
       toast("PDFLens accepted the request.");
       resetFile();
+      $("#retrieveSubmitted").disabled = false;
+      $("#retrieveSubmitted").textContent = "Retrieve result";
+      recordRequestAudit(record, "Submitted", "PDFLens accepted the request.");
+      recordRequestAudit(record, record.statusText, "Status returned by PDFLens.");
     } catch (error) {
       const message = error.message || "The request could not be completed.";
       $("#submitErrorMessage").textContent = message;
@@ -605,9 +652,11 @@
   }
 
   async function retrieveResult(record, trigger = null) {
-    if (!record?.requestId) return;
+    if (!record?.requestId || state.resultPolling) return;
+    state.resultPolling = true;
     const originalLabel = trigger?.textContent;
     if (trigger) { trigger.disabled = true; trigger.textContent = "Requesting…"; }
+    if (record === state.currentSubmission) $("#retrieveSubmitted").disabled = true;
     const pollingCard = $("#resultPollingCard");
     const pollingText = $("#resultPollingText");
     const pollingFootprint = $("#resultPollingFootprint");
@@ -615,6 +664,7 @@
     const started = Date.now();
     let attempt = 0;
     let receivedZip = false;
+    recordRequestAudit(record, "Retrieval started", "Manual result check started.");
     pollError.classList.add("hidden");
     pollingCard.classList.remove("hidden");
     pollingText.textContent = `Checking PDFLens every ${state.resultPollIntervalSeconds} seconds for up to ${Math.ceil(state.resultPollMaxWaitSeconds / 60)} minutes.`;
@@ -652,6 +702,8 @@
           try { data = await response.json(); } catch { /* use generic queued status */ }
           const upstreamStatus = safeText(data.status || "processing");
           const elapsed = Math.floor((Date.now() - started) / 1000);
+          if (record === state.currentSubmission) $("#submissionStatus").textContent = upstreamStatus;
+          recordRequestAudit(record, upstreamStatus, "PDFLens has not returned the result ZIP yet.", attempt);
           pollingText.textContent = `PDFLens status: ${upstreamStatus}. Checking again in ${state.resultPollIntervalSeconds} seconds.`;
           pollingFootprint.textContent = `Attempt ${attempt} · elapsed ${elapsed}s · request ${record.requestId}`;
           const sleepMs = Math.min(state.resultPollIntervalSeconds * 1000, Math.max(0, state.resultPollMaxWaitSeconds * 1000 - (Date.now() - started)));
@@ -678,6 +730,8 @@
         };
         state.currentZip = zip;
         state.currentPackage = packageRecord;
+        if (record === state.currentSubmission) $("#submissionStatus").textContent = "Completed";
+        recordRequestAudit(record, "Completed", `Result ZIP retrieved after ${attempt} check${attempt === 1 ? "" : "s"}.`, attempt);
         resetPageComparison(packageRecord);
         renderPackage();
         downloadBlob(zip, packageRecord.packageName);
@@ -689,6 +743,8 @@
       if (!receivedZip) throw new Error(`PDFLens was still processing after ${state.resultPollMaxWaitSeconds} seconds. Keep request ID ${record.requestId} and retry result retrieval later.`);
     } catch (error) {
       const message = error.message || "Could not retrieve this result. Check availability and try again.";
+      if (record === state.currentSubmission) $("#submissionStatus").textContent = "Retrieval issue";
+      recordRequestAudit(record, "Retrieval issue", message, attempt || null);
       $("#resultPollingErrorText").textContent = message;
       $("#resultPollingErrorId").textContent = `Request ID: ${record.requestId}`;
       pollError.classList.remove("hidden");
@@ -696,7 +752,15 @@
     } finally {
       window.clearInterval(elapsedTimer);
       pollingCard.classList.add("hidden");
+      state.resultPolling = false;
       if (trigger) { trigger.disabled = false; trigger.textContent = originalLabel; }
+      if (record === state.currentSubmission && !pollError.classList.contains("hidden")) {
+        $("#retrieveSubmitted").disabled = false;
+        $("#retrieveSubmitted").textContent = "Retry result retrieval";
+      } else if (record === state.currentSubmission) {
+        $("#retrieveSubmitted").disabled = false;
+        $("#retrieveSubmitted").textContent = "Retrieve result";
+      }
     }
   }
 
@@ -718,7 +782,8 @@
     $("#packageContent").classList.toggle("hidden", !loaded);
     if (!loaded) return;
     $("#packageName").textContent = safeText(record.packageName);
-    $("#packageRequest").textContent = record.requestId ? `Request ${displayId(record.requestId)}` : "Request ID not returned";
+    $("#packageRequest").textContent = record.requestId ? `Request ID: ${record.requestId}` : "Request ID not returned";
+    renderRequestAudit(record);
     if (record.sourcePageCount) {
       $("#packageRequest").textContent += ` · Source PDF: ${record.sourcePageCount} pages`;
     }
@@ -789,11 +854,9 @@
     state.comparePdfUrls.clear();
     state.comparePdfUrl = null;
     state.compareMetadata = null;
-    state.compareMetadataLoaded = false;
     state.compareMetadataPromise = null;
     state.compareDocxPages = null;
     state.compareDocxParagraphs = null;
-    state.compareDocxHasPageMarkers = false;
     state.compareDocxUsesBookmarks = false;
     state.compareDocxPromise = null;
     state.comparePage = record.pageRange?.start || 1;
@@ -817,7 +880,6 @@
 
   async function loadComparisonMetadata() {
     if (state.compareMetadataPromise) return state.compareMetadataPromise;
-    state.compareMetadataLoaded = true;
     state.compareMetadataPromise = (async () => {
       const zip = state.currentZip;
       const packageRecord = state.currentPackage;
@@ -843,62 +905,67 @@
     if (state.compareDocxPages) return state.compareDocxPages;
     if (state.compareDocxPromise) return state.compareDocxPromise;
     state.compareDocxPromise = (async () => {
-    const zip = state.currentZip;
-    const packageRecord = state.currentPackage;
-    const entry = packageRecord?.files?.find((file) => fileExtension(file.name) === "docx");
-    if (!entry || !zip) return null;
-    const archive = await readZipEntry(zip, entry);
-    const contents = await readZipDirectory(archive);
-    const documentEntry = contents.find((file) => file.name === "word/document.xml");
-    if (!documentEntry) return null;
-    const xml = new DOMParser().parseFromString(await (await readZipEntry(archive, documentEntry)).text(), "application/xml");
-    if (xml.querySelector("parsererror")) return null;
-    const ns = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
-    const body = xml.getElementsByTagNameNS(ns, "body")[0];
-    if (!body) return null;
-    const pages = new Map();
-    const allParagraphs = [];
-    let currentPage = 1;
-    let hasBookmarks = false;
-    const appendText = (page, text, style = "") => {
-      if (!text.trim()) return;
-      const paragraph = { text, style };
-      allParagraphs.push(paragraph);
-      if (!pages.has(page)) pages.set(page, []);
-      pages.get(page).push(paragraph);
-    };
-    for (const child of body.children) {
-      if (child.localName === "p") {
-        for (const bookmark of child.getElementsByTagNameNS(ns, "bookmarkStart")) {
-          const name = bookmark.getAttributeNS(ns, "name") || bookmark.getAttribute("w:name") || "";
-          const match = name.match(/^pdflens_page_(\d+)$/i);
-          if (match) {
-            currentPage = Number(match[1]); hasBookmarks = true;
-            if (!pages.has(currentPage)) pages.set(currentPage, []);
+      const zip = state.currentZip;
+      const packageRecord = state.currentPackage;
+      const entry = packageRecord?.files?.find((file) => fileExtension(file.name) === "docx");
+      if (!entry || !zip) return null;
+      const archive = await readZipEntry(zip, entry);
+      const contents = await readZipDirectory(archive);
+      const documentEntry = contents.find((file) => file.name === "word/document.xml");
+      if (!documentEntry) return null;
+      const xml = new DOMParser().parseFromString(await (await readZipEntry(archive, documentEntry)).text(), "application/xml");
+      if (xml.querySelector("parsererror")) return null;
+      const ns = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+      const body = xml.getElementsByTagNameNS(ns, "body")[0];
+      if (!body) return null;
+      const pages = new Map();
+      const allParagraphs = [];
+      let currentPage = 1;
+      let hasBookmarks = false;
+      const appendText = (page, text, style = "") => {
+        if (!text.trim()) return;
+        const paragraph = { text, style };
+        allParagraphs.push(paragraph);
+        if (!pages.has(page)) pages.set(page, []);
+        pages.get(page).push(paragraph);
+      };
+      for (const child of body.children) {
+        if (child.localName === "p") {
+          for (const bookmark of child.getElementsByTagNameNS(ns, "bookmarkStart")) {
+            const name = bookmark.getAttributeNS(ns, "name") || bookmark.getAttribute("w:name") || "";
+            const match = name.match(/^pdflens_page_(\d+)$/i);
+            if (match) {
+              currentPage = Number(match[1]); hasBookmarks = true;
+              if (!pages.has(currentPage)) pages.set(currentPage, []);
+            }
           }
+          const text = [...child.getElementsByTagNameNS(ns, "t")].map((node) => node.textContent || "").join("");
+          const styleNode = child.getElementsByTagNameNS(ns, "pStyle")[0];
+          const styleName = styleNode?.getAttributeNS(ns, "val") || styleNode?.getAttribute("w:val") || "";
+          const heading = styleName.match(/heading\s*(\d)|heading(\d)/i);
+          appendText(currentPage, text, heading ? `Heading ${heading[1] || heading[2]}` : "");
+          const breakAfter = [...child.getElementsByTagNameNS(ns, "br")].some((node) => (node.getAttributeNS(ns, "type") || node.getAttribute("w:type")) === "page")
+            || child.getElementsByTagNameNS(ns, "lastRenderedPageBreak").length > 0
+            || child.getElementsByTagNameNS(ns, "sectPr").length > 0;
+          if (!hasBookmarks && breakAfter) currentPage += 1;
+        } else if (child.localName === "tbl") {
+          const text = [...child.getElementsByTagNameNS(ns, "t")].map((node) => node.textContent || "").join(" | ");
+          appendText(currentPage, text, "");
         }
-        const text = [...child.getElementsByTagNameNS(ns, "t")].map((node) => node.textContent || "").join("");
-        const styleNode = child.getElementsByTagNameNS(ns, "pStyle")[0];
-        const styleName = styleNode?.getAttributeNS(ns, "val") || styleNode?.getAttribute("w:val") || "";
-        const heading = styleName.match(/heading\s*(\d)|heading(\d)/i);
-        appendText(currentPage, text, heading ? `Heading ${heading[1] || heading[2]}` : "");
-        const breakAfter = [...child.getElementsByTagNameNS(ns, "br")].some((node) => (node.getAttributeNS(ns, "type") || node.getAttribute("w:type")) === "page")
-          || child.getElementsByTagNameNS(ns, "lastRenderedPageBreak").length > 0
-          || child.getElementsByTagNameNS(ns, "sectPr").length > 0;
-        if (!hasBookmarks && breakAfter) currentPage += 1;
-      } else if (child.localName === "tbl") {
-        const text = [...child.getElementsByTagNameNS(ns, "t")].map((node) => node.textContent || "").join(" | ");
-        appendText(currentPage, text, "");
       }
-    }
-    if (zip !== state.currentZip || packageRecord !== state.currentPackage) return null;
-    state.compareDocxPages = pages;
-    state.compareDocxParagraphs = allParagraphs;
-    state.compareDocxHasPageMarkers = hasBookmarks || pages.size > 1;
-    state.compareDocxUsesBookmarks = hasBookmarks;
-    return pages;
+      if (zip !== state.currentZip || packageRecord !== state.currentPackage) return null;
+      state.compareDocxPages = pages;
+      state.compareDocxParagraphs = allParagraphs;
+      state.compareDocxUsesBookmarks = hasBookmarks;
+      return pages;
     })();
-    return state.compareDocxPromise;
+    const loadingPromise = state.compareDocxPromise;
+    try {
+      return await loadingPromise;
+    } catch (error) {
+      if (state.compareDocxPromise === loadingPromise) state.compareDocxPromise = null;
+      throw error;
+    }
   }
 
   function metadataPageForSourcePage(metadata, sourcePage, record) {
@@ -925,6 +992,15 @@
     node.textContent = text;
     parent.append(node);
     return node;
+  }
+
+  function safeMetadataHref(value) {
+    try {
+      const url = new URL(String(value || "").trim());
+      return ["http:", "https:", "mailto:"].includes(url.protocol) ? url.href : "";
+    } catch {
+      return "";
+    }
   }
 
   function renderFriendlyMetadata(page, metadata, sourcePage, container) {
@@ -993,10 +1069,13 @@
     if (!hyperlinks.length) appendCompareText(article, "p", "compare-no-content", "No hyperlinks are listed for this page.");
     for (const linkData of hyperlinks) {
       const row = document.createElement("div"); row.className = "compare-hyperlink";
-      const description = [linkData.text, linkData.page_number ? `Page ${linkData.page_number}` : "", Number.isInteger(linkData.hyperlink_index) ? `Link ${linkData.hyperlink_index}` : ""].filter(Boolean).join(" · ");
-      appendCompareText(row, "p", "", description || linkData.uri || "Hyperlink");
-      if (linkData.uri) {
-        const link = document.createElement("a"); link.href = String(linkData.uri); link.target = "_blank"; link.rel = "noreferrer"; link.textContent = String(linkData.uri); row.append(link);
+      const item = typeof linkData === "string" ? { uri: linkData } : (linkData || {});
+      const uri = String(item.uri || item.target_uri || "");
+      const description = [item.text, item.page_number ? `Page ${item.page_number}` : "", Number.isInteger(item.hyperlink_index) ? `Link ${item.hyperlink_index}` : ""].filter(Boolean).join(" · ");
+      appendCompareText(row, "p", "", description || uri || "Hyperlink");
+      const href = safeMetadataHref(uri);
+      if (href) {
+        const link = document.createElement("a"); link.href = href; link.target = "_blank"; link.rel = "noopener noreferrer"; link.textContent = uri; row.append(link);
       }
       article.append(row);
     }
@@ -1012,7 +1091,10 @@
       card.append(top);
       if (element.text) appendCompareText(card, "p", "compare-element-text", element.text);
       if (element.target_uri) {
-        const link = document.createElement("a"); link.href = String(element.target_uri); link.target = "_blank"; link.rel = "noreferrer"; link.textContent = String(element.target_uri); card.append(link);
+        const href = safeMetadataHref(element.target_uri);
+        if (href) {
+          const link = document.createElement("a"); link.href = href; link.target = "_blank"; link.rel = "noopener noreferrer"; link.textContent = String(element.target_uri); card.append(link);
+        }
       }
       if (element.artifact_path) appendCompareText(card, "small", "compare-element-path", `Snapshot: ${element.artifact_path}`);
       article.append(card);
@@ -1151,10 +1233,11 @@
     try {
       const pages = await loadComparisonDocxPages();
       if (!isCurrent()) return;
-      let content = state.compareDocxUsesBookmarks || !record.pageRange
-        ? pages?.get(pageNumber)
-        : pages?.get(pageNumber - record.pageRange.start + 1);
-      if (!content?.length && !state.compareDocxHasPageMarkers) {
+      const docxPageNumber = state.compareDocxUsesBookmarks || !record.pageRange
+        ? pageNumber
+        : pageNumber - record.pageRange.start + 1;
+      let content = pages?.get(docxPageNumber);
+      if (!content?.length && !pages?.has(docxPageNumber)) {
         const metadata = await loadComparisonMetadata();
         if (!isCurrent()) return;
         const mappedPages = mapDocxParagraphsToMetadataPages(state.compareDocxParagraphs || [], metadata, record);

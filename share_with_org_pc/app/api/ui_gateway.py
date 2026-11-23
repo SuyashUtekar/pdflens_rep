@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 from datetime import datetime, timezone
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import JSONResponse, Response
@@ -81,6 +82,7 @@ async def submit_job(
     extract_footnotes: bool = Form(False),
     start_page: int | None = Form(None),
     end_page: int | None = Form(None),
+    callback_url: str = Form(""),
 ) -> dict[str, object]:
     if not settings.config_id:
         raise HTTPException(status_code=503, detail="PDFLENS_CONFIG_ID is not configured on the UI service.")
@@ -108,6 +110,22 @@ async def submit_job(
                 status_code=422,
                 detail=f"End page cannot exceed this PDF's {page_count}-page limit.",
             )
+
+    selected_callback_url = callback_url.strip() or settings.callback_url
+    if selected_callback_url:
+        try:
+            callback_parts = urlsplit(selected_callback_url)
+            valid_callback_url = (
+                callback_parts.scheme in {"http", "https"}
+                and bool(callback_parts.hostname)
+                and callback_parts.username is None
+                and callback_parts.password is None
+                and (callback_parts.port is None or 1 <= callback_parts.port <= 65535)
+            )
+        except ValueError:
+            valid_callback_url = False
+        if not valid_callback_url:
+            raise HTTPException(status_code=422, detail="Callback URL must be a valid HTTP or HTTPS URL without embedded credentials.")
 
     try:
         file_record = await run_in_threadpool(
@@ -137,13 +155,14 @@ async def submit_job(
     if start_page is not None and end_page is not None:
         upstream_body["start_page"] = start_page
         upstream_body["end_page"] = end_page
-    if settings.callback_url:
-        upstream_body["callback_url"] = settings.callback_url
+    if selected_callback_url:
+        upstream_body["callback_url"] = selected_callback_url
     info(logger, "pdflens_submit_started", file_id=file_record["file_id"],
          extract_tables=extract_tables, extract_images=extract_images,
          extract_header=extract_header, extract_footer=extract_footer,
          extract_hyperlinks=extract_hyperlinks, extract_footnotes=extract_footnotes,
-         start_page=start_page, end_page=end_page, pdf_page_count=page_count)
+         start_page=start_page, end_page=end_page, pdf_page_count=page_count,
+         callback_url_provided=bool(selected_callback_url))
     try:
         result = await run_in_threadpool(submit_pdf, upstream_body)
     except PdfLensUpstreamError as exc:
@@ -157,7 +176,7 @@ async def submit_job(
         "filename": safe_filename(file.filename),
         "page_count": page_count,
         "submitted_at": datetime.now(timezone.utc).isoformat(),
-        "callback_configured": bool(settings.callback_url),
+        "callback_configured": bool(selected_callback_url),
     }
 
 
