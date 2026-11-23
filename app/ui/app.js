@@ -8,6 +8,9 @@
     health: null, configConfigured: false, previewObjectUrl: null,
     pageCount: null, pageCountAvailable: false, pageCountPending: false, pageInfoRequest: 0,
     resultPollIntervalSeconds: 5, resultPollMaxWaitSeconds: 900,
+    comparePage: 1, compareMetadata: null, compareMetadataLoaded: false,
+    compareDocxPages: null, compareDocxParagraphs: null, compareDocxHasPageMarkers: false, compareDocxUsesBookmarks: false,
+    comparePdfUrl: null, compareAssetUrls: [], compareRenderId: 0,
   };
 
   const prettyBytes = (bytes) => {
@@ -41,10 +44,11 @@
     const selected = document.getElementById(`page-${page}`) ? page : "dashboard";
     $$(".page").forEach((section) => section.classList.toggle("active", section.id === `page-${selected}`));
     $$(".nav-item[data-page]").forEach((item) => item.classList.toggle("active", item.dataset.page === selected));
-    const labels = { dashboard: "Dashboard", upload: "Upload & process", package: "Processed package" };
+    const labels = { dashboard: "Dashboard", upload: "Upload & process", package: "Processed package", validation: "Comparison & validation" };
     $("#breadcrumbCurrent").textContent = labels[selected] || "Dashboard";
     document.title = `PDFLens · ${labels[selected] || "Dashboard"}`;
     if (selected === "package") renderPackage();
+    if (selected === "validation") renderPageComparison();
     $("#sidebar").classList.remove("open");
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -674,6 +678,7 @@
         };
         state.currentZip = zip;
         state.currentPackage = packageRecord;
+        resetPageComparison(packageRecord);
         renderPackage();
         downloadBlob(zip, packageRecord.packageName);
         navigate("package");
@@ -777,6 +782,401 @@
     };
   }
 
+  function resetPageComparison(record) {
+    state.compareRenderId += 1;
+    if (state.comparePdfUrl) URL.revokeObjectURL(state.comparePdfUrl);
+    state.comparePdfUrl = record.sourcePdf ? URL.createObjectURL(record.sourcePdf) : null;
+    state.compareMetadata = null;
+    state.compareMetadataLoaded = false;
+    state.compareDocxPages = null;
+    state.compareDocxParagraphs = null;
+    state.compareDocxHasPageMarkers = false;
+    state.compareDocxUsesBookmarks = false;
+    state.comparePage = record.pageRange?.start || 1;
+    clearComparisonAssetUrls();
+  }
+
+  function clearComparisonAssetUrls() {
+    for (const url of state.compareAssetUrls) URL.revokeObjectURL(url);
+    state.compareAssetUrls = [];
+  }
+
+  function sourcePageBounds(record) {
+    const metadataPages = Array.isArray(state.compareMetadata) ? state.compareMetadata : state.compareMetadata?.pages;
+    const totalPages = Number(record.sourcePageCount) || Number(metadataPages?.length) || 1;
+    return {
+      start: record.pageRange?.start || 1,
+      end: record.pageRange?.end || totalPages,
+      total: totalPages,
+    };
+  }
+
+  async function loadComparisonMetadata() {
+    if (state.compareMetadataLoaded) return state.compareMetadata;
+    state.compareMetadataLoaded = true;
+    if (!state.currentZip) return null;
+    const candidates = (state.currentPackage?.files || []).filter((file) => fileExtension(file.name) === "json")
+      .sort((left, right) => {
+        const rank = (file) => /^meta\.json$/i.test(file.name.split("/").pop()) ? 0 : /(?:^|[_-])metadata\.json$/i.test(file.name.split("/").pop()) ? 1 : /metadata/i.test(file.name) ? 2 : 3;
+        return rank(left) - rank(right);
+      });
+    for (const entry of candidates) {
+      try {
+        const parsed = JSON.parse(await (await readZipEntry(state.currentZip, entry)).text());
+        if (Array.isArray(parsed) || (parsed && Array.isArray(parsed.pages))) { state.compareMetadata = parsed; break; }
+      } catch { /* try another JSON file in the package */ }
+    }
+    return state.compareMetadata;
+  }
+
+  async function loadComparisonDocxPages() {
+    if (state.compareDocxPages) return state.compareDocxPages;
+    const entry = state.currentPackage?.files?.find((file) => fileExtension(file.name) === "docx");
+    if (!entry || !state.currentZip) return null;
+    const archive = await readZipEntry(state.currentZip, entry);
+    const contents = await readZipDirectory(archive);
+    const documentEntry = contents.find((file) => file.name === "word/document.xml");
+    if (!documentEntry) return null;
+    const xml = new DOMParser().parseFromString(await (await readZipEntry(archive, documentEntry)).text(), "application/xml");
+    if (xml.querySelector("parsererror")) return null;
+    const ns = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+    const body = xml.getElementsByTagNameNS(ns, "body")[0];
+    if (!body) return null;
+    const pages = new Map();
+    const allParagraphs = [];
+    let currentPage = 1;
+    let hasBookmarks = false;
+    const appendText = (page, text, style = "") => {
+      if (!text.trim()) return;
+      const paragraph = { text, style };
+      allParagraphs.push(paragraph);
+      if (!pages.has(page)) pages.set(page, []);
+      pages.get(page).push(paragraph);
+    };
+    for (const child of body.children) {
+      if (child.localName === "p") {
+        for (const bookmark of child.getElementsByTagNameNS(ns, "bookmarkStart")) {
+          const name = bookmark.getAttributeNS(ns, "name") || bookmark.getAttribute("w:name") || "";
+          const match = name.match(/^pdflens_page_(\d+)$/i);
+          if (match) {
+            currentPage = Number(match[1]); hasBookmarks = true;
+            if (!pages.has(currentPage)) pages.set(currentPage, []);
+          }
+        }
+        const text = [...child.getElementsByTagNameNS(ns, "t")].map((node) => node.textContent || "").join("");
+        const styleNode = child.getElementsByTagNameNS(ns, "pStyle")[0];
+        const styleName = styleNode?.getAttributeNS(ns, "val") || styleNode?.getAttribute("w:val") || "";
+        const heading = styleName.match(/heading\s*(\d)|heading(\d)/i);
+        appendText(currentPage, text, heading ? `Heading ${heading[1] || heading[2]}` : "");
+        const breakAfter = [...child.getElementsByTagNameNS(ns, "br")].some((node) => (node.getAttributeNS(ns, "type") || node.getAttribute("w:type")) === "page")
+          || child.getElementsByTagNameNS(ns, "lastRenderedPageBreak").length > 0
+          || child.getElementsByTagNameNS(ns, "sectPr").length > 0;
+        if (!hasBookmarks && breakAfter) currentPage += 1;
+      } else if (child.localName === "tbl") {
+        const text = [...child.getElementsByTagNameNS(ns, "t")].map((node) => node.textContent || "").join(" | ");
+        appendText(currentPage, text, "");
+      }
+    }
+    state.compareDocxPages = pages;
+    state.compareDocxParagraphs = allParagraphs;
+    state.compareDocxHasPageMarkers = hasBookmarks || pages.size > 1;
+    state.compareDocxUsesBookmarks = hasBookmarks;
+    return pages;
+  }
+
+  function metadataPageForSourcePage(metadata, sourcePage, record) {
+    const pages = Array.isArray(metadata) ? metadata : metadata?.pages;
+    if (!Array.isArray(pages)) return null;
+    if (record.pageRange) {
+      const hasSourcePageNumbers = pages.some((page) => Number(page.page_number) === record.pageRange.start)
+        && pages.some((page) => Number(page.page_number) === record.pageRange.end);
+      if (hasSourcePageNumbers) {
+        const exact = pages.find((page) => Number(page.page_number) === sourcePage);
+        if (exact) return exact;
+      }
+      const localPage = sourcePage - record.pageRange.start + 1;
+      return pages.find((page) => Number(page.page_number) === localPage) || pages[localPage - 1] || null;
+    }
+    const exact = pages.find((page) => Number(page.page_number) === sourcePage);
+    if (exact) return exact;
+    return pages[sourcePage - 1] || null;
+  }
+
+  function appendCompareText(parent, tag, className, text) {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    node.textContent = text;
+    parent.append(node);
+    return node;
+  }
+
+  function renderFriendlyMetadata(page, metadata, sourcePage, container) {
+    const article = document.createElement("article"); article.className = "compare-metadata-page";
+    appendCompareText(article, "div", "compare-metadata-eyebrow", "PAGE EXTRACTION");
+    appendCompareText(article, "h3", "compare-metadata-title", `Page ${sourcePage}`);
+    const facts = document.createElement("div"); facts.className = "compare-page-facts";
+    const imageNames = [...new Set(["body", "header", "footer"].flatMap((key) => Array.isArray(page.image?.[key]) ? page.image[key] : []))];
+    const factValues = [
+      ["Metadata page", page.page_number ?? sourcePage],
+      ["Page type", page.page_type || "Not provided"],
+      ["Page size", Number.isFinite(Number(page.width_pt)) && Number.isFinite(Number(page.height_pt)) ? `${Number(page.width_pt).toFixed(1)} × ${Number(page.height_pt).toFixed(1)} pt` : "Not provided"],
+      ["Images", imageNames.length], ["Tables", Array.isArray(page.table) ? page.table.length : 0],
+    ];
+    for (const [label, value] of factValues) {
+      const item = document.createElement("div"); item.className = "compare-page-fact";
+      appendCompareText(item, "small", "", label); appendCompareText(item, "b", "", String(value)); facts.append(item);
+    }
+    article.append(facts);
+
+    appendCompareText(article, "h4", "compare-section-title", "Body text");
+    const body = String(page.full_text || page.body_text || "").trim();
+    if (body) {
+      const bodyBox = document.createElement("div"); bodyBox.className = "compare-body-text";
+      body.split(/\n+/).filter((line) => line.trim()).forEach((line) => appendCompareText(bodyBox, "p", "", line.trim()));
+      article.append(bodyBox);
+    } else appendCompareText(article, "p", "compare-no-content", "No page body text was extracted.");
+
+    appendCompareText(article, "h4", "compare-section-title", "Headers and footers");
+    const furniture = document.createElement("div"); furniture.className = "compare-furniture-grid";
+    for (const [label, value] of [["Header", page.header], ["Footer", page.footer]]) {
+      const item = document.createElement("div"); item.className = "compare-furniture-item";
+      appendCompareText(item, "small", "", label);
+      appendCompareText(item, "p", "", Array.isArray(value) ? value.join("\n") : String(value || "—"));
+      furniture.append(item);
+    }
+    article.append(furniture);
+
+    appendCompareText(article, "h4", "compare-section-title", "Images on this page");
+    if (!imageNames.length) appendCompareText(article, "p", "compare-no-content", "No image files are listed for this page.");
+    else for (const imageName of imageNames) appendCompareText(article, "div", "compare-inline-asset", imageName);
+
+    appendCompareText(article, "h4", "compare-section-title", "Tables on this page");
+    const tables = Array.isArray(page.table) ? page.table : [];
+    if (!tables.length) appendCompareText(article, "p", "compare-no-content", "No tables are listed for this page.");
+    for (const [index, table] of tables.entries()) {
+      const card = document.createElement("article"); card.className = "compare-element-card";
+      appendCompareText(card, "div", "compare-element-type", `Table ${index + 1}`);
+      appendCompareText(card, "pre", "compare-structured-value", typeof table === "string" ? table : JSON.stringify(table, null, 2));
+      article.append(card);
+    }
+
+    appendCompareText(article, "h4", "compare-section-title", "Footnotes and hyperlinks");
+    const footnotes = Array.isArray(page.footnote) ? page.footnote : [];
+    if (!footnotes.length) appendCompareText(article, "p", "compare-no-content", "No footnotes are listed for this page.");
+    for (const [index, footnote] of footnotes.entries()) {
+      const text = typeof footnote === "string" ? footnote : footnote?.text || JSON.stringify(footnote);
+      appendCompareText(article, "p", "compare-element-text", `Footnote ${index + 1}: ${text}`);
+    }
+    const hyperlinks = Array.isArray(page.hyperlink) ? page.hyperlink : [];
+    if (!hyperlinks.length) appendCompareText(article, "p", "compare-no-content", "No hyperlinks are listed for this page.");
+    for (const linkData of hyperlinks) {
+      const row = document.createElement("div"); row.className = "compare-hyperlink";
+      appendCompareText(row, "p", "", linkData.text || linkData.uri || "Hyperlink");
+      if (linkData.uri) {
+        const link = document.createElement("a"); link.href = String(linkData.uri); link.target = "_blank"; link.rel = "noreferrer"; link.textContent = String(linkData.uri); row.append(link);
+      }
+      article.append(row);
+    }
+
+    appendCompareText(article, "h4", "compare-section-title", "Structured elements");
+    const elements = Array.isArray(page.elements) ? page.elements : [];
+    if (!elements.length) appendCompareText(article, "p", "compare-no-content", "No individual elements were recorded for this page.");
+    for (const element of elements) {
+      const card = document.createElement("article"); card.className = "compare-element-card";
+      const top = document.createElement("div"); top.className = "compare-element-top";
+      appendCompareText(top, "span", "compare-element-type", String(element.type || "element").replaceAll("_", " "));
+      if (element.reading_order !== undefined && element.reading_order !== null) appendCompareText(top, "small", "", `Reading order ${element.reading_order}`);
+      card.append(top);
+      if (element.text) appendCompareText(card, "p", "compare-element-text", element.text);
+      if (element.target_uri) {
+        const link = document.createElement("a"); link.href = String(element.target_uri); link.target = "_blank"; link.rel = "noreferrer"; link.textContent = String(element.target_uri); card.append(link);
+      }
+      if (element.artifact_path) appendCompareText(card, "small", "compare-element-path", `Snapshot: ${element.artifact_path}`);
+      article.append(card);
+    }
+
+    const raw = document.createElement("details"); raw.className = "compare-raw-details";
+    const summary = document.createElement("summary"); summary.textContent = "View raw page JSON"; raw.append(summary);
+    const pre = document.createElement("pre"); pre.className = "preview-code compare-metadata-raw"; pre.textContent = JSON.stringify(page, null, 2); raw.append(pre);
+    article.append(raw);
+    container.replaceChildren(article);
+  }
+
+  function comparisonTokens(text) {
+    return String(text || "").toLocaleLowerCase().match(/[\p{L}\p{N}]+/gu) || [];
+  }
+
+  function mapDocxParagraphsToMetadataPages(paragraphs, metadata, record) {
+    const bounds = sourcePageBounds(record);
+    const pageRecords = [];
+    for (let pageNumber = bounds.start; pageNumber <= bounds.end; pageNumber += 1) {
+      const metadataPage = metadataPageForSourcePage(metadata, pageNumber, record);
+      pageRecords.push({ pageNumber, tokens: new Set(comparisonTokens(metadataPage?.full_text || metadataPage?.body_text || "")) });
+    }
+    if (!pageRecords.some((page) => page.tokens.size)) return null;
+    const mapped = new Map(pageRecords.map((page) => [page.pageNumber, []]));
+    let lastIndex = 0;
+    paragraphs.forEach((paragraph, paragraphIndex) => {
+      const words = comparisonTokens(paragraph.text);
+      let selectedIndex = Math.min(lastIndex, pageRecords.length - 1);
+      let bestScore = 0;
+      for (let pageIndex = lastIndex; pageIndex < pageRecords.length; pageIndex += 1) {
+        let score = 0;
+        for (const word of words) if (pageRecords[pageIndex].tokens.has(word)) score += 1;
+        if (score > bestScore) { bestScore = score; selectedIndex = pageIndex; }
+      }
+      if (!bestScore) selectedIndex = Math.min(lastIndex, pageRecords.length - 1);
+      else lastIndex = selectedIndex;
+      mapped.get(pageRecords[selectedIndex].pageNumber).push(paragraph);
+    });
+    return mapped;
+  }
+
+  async function renderComparisonOutput() {
+    const renderId = ++state.compareRenderId;
+    const isCurrent = () => renderId === state.compareRenderId;
+    clearComparisonAssetUrls();
+    const container = $("#compareOutputBody");
+    const view = $("#compareOutputView").value;
+    const record = state.currentPackage;
+    const pageNumber = state.comparePage;
+    $("#compareOutputPageLabel").textContent = `Showing output for source page ${pageNumber}`;
+    container.replaceChildren();
+    const loading = document.createElement("p"); loading.className = "preview-loading"; loading.textContent = "Opening page content…"; container.append(loading);
+
+    if (view === "metadata") {
+      const metadata = await loadComparisonMetadata();
+      if (!isCurrent()) return;
+      const page = metadataPageForSourcePage(metadata, pageNumber, record);
+      if (!page) { showCompareMessage("No matching metadata page was found in this ZIP."); return; }
+      renderFriendlyMetadata(page, metadata, pageNumber, container);
+      return;
+    }
+
+    if (view === "images" || view === "tables") {
+      const metadata = await loadComparisonMetadata();
+      if (!isCurrent()) return;
+      const page = metadataPageForSourcePage(metadata, pageNumber, record);
+      const kind = view === "images" ? "image" : "table";
+      const pageTokens = view === "images"
+        ? [...new Set(["body", "header", "footer"].flatMap((key) => Array.isArray(page?.image?.[key]) ? page.image[key] : []))]
+        : (Array.isArray(page?.table) ? page.table : []);
+      const assetPaths = [
+        ...pageTokens.filter((item) => typeof item === "string"),
+        ...pageTokens.filter((item) => item && typeof item === "object").flatMap((item) => [item.artifact_path, item.path, item.file, item.filename, item.snapshot_path, item.snapshot, item.asset_path, item.image_path, item.snapshot_file, item.table_path].filter(Boolean)),
+        ...(page?.elements || []).filter((element) => String(element.type || "").toLowerCase().includes(kind)).map((element) => element.artifact_path).filter(Boolean),
+      ].map((path) => String(path).replaceAll("\\", "/").toLowerCase());
+      const imageExtensions = ["png", "jpg", "jpeg", "webp", "gif", "tif", "tiff"];
+      const isAssetType = (file) => {
+        const lower = file.name.toLowerCase();
+        const normalizedName = lower.replaceAll("\\", "/");
+        const explicitlyReferenced = assetPaths.some((path) => normalizedName === path || normalizedName.endsWith(`/${path}`) || normalizedName.endsWith(`/${path.split("/").pop()}`));
+        return imageExtensions.includes(fileExtension(file.name))
+          && (explicitlyReferenced || (kind === "image" ? !/table/i.test(lower) : /table/i.test(lower)));
+      };
+      let assets = (record.files || []).filter((file) => isAssetType(file) && assetPaths.some((path) => {
+        const name = file.name.replaceAll("\\", "/").toLowerCase();
+        return name === path || name.endsWith(`/${path}`) || name.endsWith(`/${path.split("/").pop()}`);
+      }));
+      if (!assets.length) {
+        const pageToken = new RegExp(`(?:page|p)[-_]?0*${pageNumber}(?:[-_]|\\.)`, "i");
+        assets = (record.files || []).filter((file) => isAssetType(file) && pageToken.test(file.name));
+      }
+      if (!assets.length) { showCompareMessage(`No ${kind} files are linked to source page ${pageNumber} in the result package.`); return; }
+      const assetCards = document.createDocumentFragment();
+      for (const asset of assets) {
+        const card = document.createElement("article"); card.className = "compare-asset-card";
+        const title = document.createElement("b"); title.textContent = asset.name;
+        card.append(title);
+        if (["png", "jpg", "jpeg", "webp", "gif"].includes(fileExtension(asset.name))) {
+          try {
+            const blob = await readZipEntry(state.currentZip, asset);
+            if (!isCurrent()) return;
+            const url = URL.createObjectURL(blob); state.compareAssetUrls.push(url);
+            const image = document.createElement("img"); image.src = url; image.alt = asset.name; card.append(image);
+          } catch (error) {
+            const note = document.createElement("small"); note.textContent = error.message || "Could not open this snapshot."; card.append(note);
+          }
+        }
+        const download = document.createElement("button"); download.className = "button button-secondary"; download.textContent = "Download snapshot";
+        download.addEventListener("click", () => downloadPackageFile(asset)); card.append(download); assetCards.append(card);
+      }
+      if (isCurrent()) container.replaceChildren(assetCards);
+      return;
+    }
+
+    try {
+      const pages = await loadComparisonDocxPages();
+      if (!isCurrent()) return;
+      let content = state.compareDocxUsesBookmarks || !record.pageRange
+        ? pages?.get(pageNumber)
+        : pages?.get(pageNumber - record.pageRange.start + 1);
+      if (!content?.length && !state.compareDocxHasPageMarkers) {
+        const metadata = await loadComparisonMetadata();
+        if (!isCurrent()) return;
+        const mappedPages = mapDocxParagraphsToMetadataPages(state.compareDocxParagraphs || [], metadata, record);
+        content = mappedPages?.get(pageNumber);
+      }
+      if (!content) { showCompareMessage("This DOCX does not include a page marker for this source page. Try the Metadata or Images & tables view."); return; }
+      if (!content.length) { showCompareMessage("No readable DOCX text was mapped to this source page. Try the Metadata or Images & tables view."); return; }
+      const article = document.createElement("article"); article.className = "docx-preview compare-docx-page";
+      for (const paragraph of content) {
+        const node = document.createElement(paragraph.style ? `h${paragraph.style.match(/\d/)?.[0] || 2}` : "p");
+        node.textContent = paragraph.text; article.append(node);
+      }
+      container.replaceChildren(article);
+    } catch (error) {
+      if (isCurrent()) showCompareMessage(error.message || "Could not open the DOCX page content.");
+    }
+  }
+
+  function showCompareMessage(message) {
+    const note = document.createElement("p"); note.className = "compare-empty-note"; note.textContent = message;
+    $("#compareOutputBody").replaceChildren(note);
+  }
+
+  async function renderPageComparison() {
+    const record = state.currentPackage;
+    const ready = Boolean(record?.sourcePdf && state.currentZip);
+    $("#validationEmpty").classList.toggle("hidden", ready);
+    $("#pageCompare").classList.toggle("hidden", !ready);
+    if (!ready) return;
+    await loadComparisonMetadata();
+    if (record !== state.currentPackage) return;
+    if (!state.comparePdfUrl) state.comparePdfUrl = URL.createObjectURL(record.sourcePdf);
+    const bounds = sourcePageBounds(record);
+    state.comparePage = Math.max(bounds.start, Math.min(bounds.end, Number(state.comparePage) || bounds.start));
+    $("#compareDocumentName").textContent = record.filename || record.sourcePdf.name;
+    $("#comparePageCount").textContent = `${bounds.total} pages in the source PDF${record.pageRange ? ` · processed pages ${bounds.start}–${bounds.end}` : ""}`;
+    $("#comparePdfName").textContent = record.filename || record.sourcePdf.name;
+    $("#comparePageNumber").min = String(bounds.start);
+    $("#comparePageNumber").max = String(bounds.end);
+    $("#comparePageNumber").value = String(state.comparePage);
+    $("#comparePageTotal").textContent = `of ${bounds.end}`;
+    $("#previousComparePage").disabled = state.comparePage <= bounds.start;
+    $("#nextComparePage").disabled = state.comparePage >= bounds.end;
+    $("#comparePdfFrame").src = `${state.comparePdfUrl}#page=${state.comparePage}&toolbar=0&navpanes=0`;
+    renderComparisonOutput();
+  }
+
+  function resetComparisonPage() {
+    const bounds = sourcePageBounds(state.currentPackage);
+    const requested = Number($("#comparePageNumber").value);
+    if (!Number.isInteger(requested) || requested < bounds.start || requested > bounds.end) {
+      $("#comparePageNumber").value = String(state.comparePage);
+      toast(`Choose a page from ${bounds.start} to ${bounds.end}.`);
+      return;
+    }
+    state.comparePage = requested;
+    renderPageComparison();
+  }
+
+  function stepComparePage(offset) {
+    const bounds = sourcePageBounds(state.currentPackage);
+    state.comparePage = Math.max(bounds.start, Math.min(bounds.end, state.comparePage + offset));
+    renderPageComparison();
+  }
+
   function setup() {
     $$('[data-page]').forEach((item) => item.addEventListener("click", (event) => {
       event.preventDefault();
@@ -790,6 +1190,11 @@
     $("#endPage").addEventListener("input", handlePageRangeInput);
     $("#removeFile").addEventListener("click", resetFile);
     $("#submitButton").addEventListener("click", submit);
+    $("#previousComparePage").addEventListener("click", () => stepComparePage(-1));
+    $("#nextComparePage").addEventListener("click", () => stepComparePage(1));
+    $("#comparePageNumber").addEventListener("change", resetComparisonPage);
+    $("#comparePageNumber").addEventListener("keydown", (event) => { if (event.key === "Enter") resetComparisonPage(); });
+    $("#compareOutputView").addEventListener("change", renderComparisonOutput);
     $("#retrieveSubmitted").addEventListener("click", (event) => retrieveResult(state.currentSubmission, event.currentTarget));
     $("#closePreview").addEventListener("click", closePreview);
     $("#previewModal").addEventListener("click", (event) => {
