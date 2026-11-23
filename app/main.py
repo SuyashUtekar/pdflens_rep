@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import logging
 import os
 import tempfile
 import uuid
@@ -19,18 +18,17 @@ from app.parsers.docling_adapter import DoclingAdapter, ParserExecutionError, Pa
 from app.schemas.models import (DocumentInfo, ExtractionField, ExtractionRequest,
                                  Metadata, ProcessingInfo)
 from app.security.pdf import MAX_UPLOAD_BYTES, safe_filename, validate_pdf
+from app.utils.log_utils import error, get_app_logger, info, warning
 
-logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
-logger = logging.getLogger("pdflens")
+logger = get_app_logger()
 app = FastAPI(title="PDFLens Replacement", version="0.1.0",
               description="PDFLens UI gateway and local extraction feasibility API.")
 MAX_PAGES = int(os.getenv("PDFLENS_MAX_PAGES", "500"))
-logger.info(
-    "pdflens_gateway_configured submit_url=%s result_url=%s health_url=%s configs=%s "
-    "jwt_configured=%s shared_storage_configured=%s",
-    bool(settings.submit_url), bool(settings.result_url), bool(settings.health_url),
-    len(settings.configs), bool(settings.auth_token), bool(os.getenv("PDFLENS_SHARED_STORAGE_DIR")),
-)
+info(logger, "pdflens_gateway_configured", submit_url_configured=bool(settings.submit_url),
+     result_url_configured=bool(settings.result_url), health_url_configured=bool(settings.health_url),
+     config_id_configured=bool(settings.config_id), jwt_configured=bool(settings.auth_token),
+     file_manager_configured=bool(settings.file_manager_upload_url and
+                                   "{file_id}" in settings.file_manager_download_url_template))
 
 
 @app.get("/healthz")
@@ -74,16 +72,15 @@ async def extract(file: UploadFile = File(...),
                 DoclingAdapter().parse, str(source), set(request.extraction_fields)
             )
         except ParserUnavailableError as exc:
-            logger.warning("parser unavailable request_id=%s", request_id)
+            warning(logger, "parser_unavailable", request_id=request_id)
             raise HTTPException(503, detail={"code": "PARSER_UNAVAILABLE", "request_id": request_id,
                                              "message": "PDF parser is not installed in the active environment."}) from exc
         except ParserExecutionError as exc:
-            logger.error("parser failure request_id=%s stage=%s cause_type=%s",
-                         request_id, exc.stage, exc.cause_type)
+            error(logger, "parser_failure", request_id=request_id, stage=exc.stage, cause_type=exc.cause_type)
             raise HTTPException(500, detail={"code": "PARSER_FAILURE", "request_id": request_id,
                                              "message": "PDF parsing failed."}) from exc
         except Exception as exc:
-            logger.error("parser failure request_id=%s error_type=%s", request_id, type(exc).__name__)
+            error(logger, "parser_failure", request_id=request_id, error_type=type(exc).__name__)
             raise HTTPException(500, detail={"code": "PARSER_FAILURE", "request_id": request_id,
                                              "message": "PDF parsing failed."}) from exc
         if len(parsed.pages) > MAX_PAGES:
@@ -109,8 +106,7 @@ async def extract(file: UploadFile = File(...),
         try:
             build_package(metadata, output, source, requested_assets)
         except Exception as exc:
-            logger.error("artifact generation failure request_id=%s error_type=%s",
-                         request_id, type(exc).__name__)
+            error(logger, "artifact_generation_failure", request_id=request_id, error_type=type(exc).__name__)
             raise HTTPException(500, detail={"code": "ARTIFACT_GENERATION_FAILED",
                                              "request_id": request_id,
                                              "message": "Could not generate the output package."}) from exc

@@ -6,7 +6,7 @@ VENV ?= .venv314
 HOST ?= 127.0.0.1
 PORT ?= 8000
 
-# Keep every uv command on the same project environment.
+VENV_BIN = $(VENV)/bin
 UV_ENV = UV_PROJECT_ENVIRONMENT=$(VENV)
 
 .PHONY: help install run dev health pdflens-health clean
@@ -18,10 +18,10 @@ install: ## Create the Python environment and install project dependencies with 
 	$(UV_ENV) $(UV) sync --python $(PYTHON) --extra dev
 
 run: ## Run the API server
-	$(UV_ENV) $(UV) run uvicorn app.main:app --host $(HOST) --port $(PORT)
+	$(VENV_BIN)/uvicorn app.main:app --host $(HOST) --port $(PORT)
 
 dev: ## Run the API server with automatic reload
-	$(UV_ENV) $(UV) run uvicorn app.main:app --host $(HOST) --port $(PORT) --reload
+	$(VENV_BIN)/uvicorn app.main:app --host $(HOST) --port $(PORT) --reload
 
 health: ## Check the local health endpoint
 	curl --fail --silent --show-error http://$(HOST):$(PORT)/healthz

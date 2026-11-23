@@ -43,6 +43,7 @@ rbi_docs/*
 
 # Logs, temporary files, and OS metadata
 *.log
+logs/
 *.tmp
 *.swp
 .DS_Store
