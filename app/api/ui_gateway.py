@@ -11,7 +11,7 @@ from starlette.concurrency import run_in_threadpool
 from app.config import settings
 from app.integrations.file_manager import FileManagerError, upload_file
 from app.integrations.pdflens import PdfLensUpstreamError, health_check, retrieve_result, submit_pdf
-from app.security.pdf import MAX_UPLOAD_BYTES, safe_filename, validate_pdf
+from app.security.pdf import MAX_UPLOAD_BYTES, count_pdf_pages, safe_filename, validate_pdf
 from app.utils.log_utils import get_app_logger, info, warning
 
 logger = get_app_logger()
@@ -52,6 +52,24 @@ def remote_health() -> dict[str, object]:
         return {"available": False, "message": str(exc)}
 
 
+@router.post("/pdf-info")
+async def inspect_pdf(file: UploadFile = File(...)) -> dict[str, object]:
+    content = await file.read(MAX_UPLOAD_BYTES + 1)
+    try:
+        validate_pdf(content)
+    except OverflowError as exc:
+        raise HTTPException(status_code=413, detail="This PDF exceeds the upload limit.") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=415, detail="Choose a valid PDF file.") from exc
+    page_count = await run_in_threadpool(count_pdf_pages, content)
+    info(logger, "pdf_page_count_inspected", filename=safe_filename(file.filename), page_count=page_count)
+    return {
+        "filename": safe_filename(file.filename),
+        "page_count": page_count,
+        "page_count_available": page_count is not None,
+    }
+
+
 @router.post("/jobs")
 async def submit_job(
     file: UploadFile = File(...),
@@ -81,6 +99,15 @@ async def submit_job(
         raise HTTPException(status_code=413, detail="This PDF exceeds the upload limit.") from exc
     except ValueError as exc:
         raise HTTPException(status_code=415, detail="Choose a valid PDF file.") from exc
+    page_count = await run_in_threadpool(count_pdf_pages, content)
+    if start_page is not None and end_page is not None:
+        if page_count is None:
+            raise HTTPException(status_code=422, detail="The PDF page count could not be read, so a page range cannot be verified.")
+        if end_page > page_count:
+            raise HTTPException(
+                status_code=422,
+                detail=f"End page cannot exceed this PDF's {page_count}-page limit.",
+            )
 
     try:
         file_record = await run_in_threadpool(
@@ -116,7 +143,7 @@ async def submit_job(
          extract_tables=extract_tables, extract_images=extract_images,
          extract_header=extract_header, extract_footer=extract_footer,
          extract_hyperlinks=extract_hyperlinks, extract_footnotes=extract_footnotes,
-         start_page=start_page, end_page=end_page)
+         start_page=start_page, end_page=end_page, pdf_page_count=page_count)
     try:
         result = await run_in_threadpool(submit_pdf, upstream_body)
     except PdfLensUpstreamError as exc:
@@ -128,6 +155,7 @@ async def submit_job(
         "request_id": result["request_id"],
         "status": result["status"],
         "filename": safe_filename(file.filename),
+        "page_count": page_count,
         "submitted_at": datetime.now(timezone.utc).isoformat(),
         "callback_configured": bool(settings.callback_url),
     }

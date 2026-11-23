@@ -6,6 +6,7 @@
   const state = {
     file: null, currentZip: null, currentPackage: null, currentSubmission: null,
     health: null, configConfigured: false, previewObjectUrl: null,
+    pageCount: null, pageCountAvailable: false, pageCountPending: false, pageInfoRequest: 0,
     resultPollIntervalSeconds: 5, resultPollMaxWaitSeconds: 900,
   };
 
@@ -75,11 +76,53 @@
       return;
     }
     state.file = file;
+    state.pageCount = null;
+    state.pageCountAvailable = false;
+    state.pageCountPending = true;
+    $("#startPage").value = "";
+    $("#endPage").value = "";
+    $("#startPage").disabled = true;
+    $("#endPage").disabled = true;
+    $("#pageRangeError").classList.add("hidden");
+    $("#pdfPageCount").textContent = "Reading the PDF page count…";
     $("#dropzone").classList.add("hidden");
     $("#selectedFile").classList.remove("hidden");
     $("#fileName").textContent = safeText(file.name) || "Selected PDF";
     $("#fileSize").textContent = prettyBytes(file.size);
-    $("#submitButton").disabled = !state.file || !state.configConfigured;
+    $("#submitButton").disabled = true;
+    inspectPdfPageCount(file);
+  }
+
+  async function inspectPdfPageCount(file) {
+    const requestId = ++state.pageInfoRequest;
+    const body = new FormData();
+    body.append("file", file, file.name);
+    try {
+      const response = await fetch("/ui-api/pdf-info", { method: "POST", body });
+      const data = await response.json();
+      if (!response.ok) throw new Error(safeError(data, response.status));
+      if (requestId !== state.pageInfoRequest || state.file !== file) return;
+      const count = Number(data.page_count);
+      if (data.page_count_available === true && Number.isInteger(count) && count > 0) {
+        state.pageCount = count;
+        state.pageCountAvailable = true;
+        $("#startPage").max = String(count);
+        $("#endPage").max = String(count);
+        $("#startPage").disabled = false;
+        $("#endPage").disabled = false;
+        $("#pdfPageCount").textContent = `PDF contains ${count} pages. Valid range: 1–${count}.`;
+      } else {
+        $("#pdfPageCount").textContent = "Page count could not be read. You can process the full PDF; page-range selection is unavailable.";
+      }
+    } catch (error) {
+      if (requestId !== state.pageInfoRequest || state.file !== file) return;
+      $("#pdfPageCount").textContent = error.message || "Page count could not be read. You can still process the full PDF.";
+    } finally {
+      if (requestId === state.pageInfoRequest && state.file === file) {
+        state.pageCountPending = false;
+        $("#submitButton").disabled = !state.file || !state.configConfigured || state.pageCountPending;
+      }
+    }
   }
 
   function clearFileError() {
@@ -93,8 +136,20 @@
   }
 
   function resetFile() {
+    state.pageInfoRequest += 1;
+    state.pageCount = null;
+    state.pageCountAvailable = false;
+    state.pageCountPending = false;
     state.file = null;
     $("#pdfFile").value = "";
+    $("#startPage").value = "";
+    $("#endPage").value = "";
+    $("#startPage").max = "";
+    $("#endPage").max = "";
+    $("#startPage").disabled = true;
+    $("#endPage").disabled = true;
+    $("#pdfPageCount").textContent = "Select a PDF to see its page count.";
+    $("#pageRangeError").classList.add("hidden");
     $("#dropzone").classList.remove("hidden");
     $("#selectedFile").classList.add("hidden");
     $("#submitButton").disabled = true;
@@ -110,13 +165,33 @@
     const endText = $("#endPage").value.trim();
     if (!startText && !endText) return { start: null, end: null, error: "" };
     if (!startText || !endText) return { start: null, end: null, error: "Enter both a start page and an end page, or leave both blank." };
+    if (!state.pageCountAvailable || !state.pageCount) {
+      return { start: null, end: null, error: "The PDF page count could not be verified, so a page range cannot be selected." };
+    }
     const start = Number(startText);
     const end = Number(endText);
     if (!Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end < 1) {
       return { start: null, end: null, error: "Page numbers must be whole numbers starting at 1." };
     }
     if (start > end) return { start: null, end: null, error: "Start page must be less than or equal to end page." };
+    if (start > state.pageCount || end > state.pageCount) {
+      return { start: null, end: null, error: `Page numbers cannot exceed this PDF's ${state.pageCount}-page limit.` };
+    }
     return { start, end, error: "" };
+  }
+
+  function handlePageRangeInput(event) {
+    const input = event.currentTarget;
+    const error = $("#pageRangeError");
+    const value = Number(input.value);
+    if (input.value && state.pageCountAvailable && value > state.pageCount) {
+      input.value = String(state.pageCount);
+      error.textContent = `This PDF has ${state.pageCount} pages. The value was limited to page ${state.pageCount}.`;
+      error.classList.remove("hidden");
+      return;
+    }
+    error.textContent = "";
+    error.classList.add("hidden");
   }
 
   function safeError(data, status) {
@@ -147,7 +222,7 @@
     } catch {
       state.configConfigured = false;
     }
-    $("#submitButton").disabled = !state.file || !state.configConfigured;
+    $("#submitButton").disabled = !state.file || !state.configConfigured || state.pageCountPending;
   }
 
   function responseFilename(disposition, fallback) {
@@ -435,6 +510,25 @@
     }
   }
 
+  function openOriginalPdfPreview() {
+    const record = state.currentPackage;
+    if (!record?.sourcePdf) { toast("The original PDF preview is no longer available in this page session."); return; }
+    if (state.previewObjectUrl) URL.revokeObjectURL(state.previewObjectUrl);
+    const details = record.sourcePageCount ? `${record.sourcePageCount} pages` : "Page count unavailable";
+    const title = safeText(record.filename || record.sourcePdf.name);
+    $("#previewTitle").textContent = title;
+    $("#previewSubtitle").textContent = `Original uploaded PDF · ${details} · ${prettyBytes(record.sourcePdf.size)}`;
+    const frame = document.createElement("iframe");
+    frame.className = "preview-pdf-frame";
+    frame.title = `Original PDF preview: ${title}`;
+    state.previewObjectUrl = URL.createObjectURL(record.sourcePdf);
+    frame.src = state.previewObjectUrl;
+    $("#previewBody").replaceChildren(frame);
+    $("#previewDownload").onclick = () => downloadBlob(record.sourcePdf, record.filename || record.sourcePdf.name);
+    $("#previewModal").classList.remove("hidden");
+    document.body.classList.add("preview-open");
+  }
+
   function closePreview() {
     $("#previewModal").classList.add("hidden");
     document.body.classList.remove("preview-open");
@@ -444,7 +538,7 @@
   }
 
   async function submit() {
-    if (!state.file || !state.configConfigured) return;
+    if (!state.file || !state.configConfigured || state.pageCountPending) return;
     const pageRange = selectedPageRange();
     const pageRangeError = $("#pageRangeError");
     if (pageRange.error) {
@@ -482,6 +576,9 @@
         filename: safeText(data.filename || state.file.name), requestId,
         submittedAt: data.submitted_at || started, outcome: "submitted",
         statusText: String(data.status),
+        sourcePdf: state.file,
+        sourcePageCount: Number.isInteger(data.page_count) ? data.page_count : state.pageCount,
+        pageRange: pageRange.start === null ? null : { start: pageRange.start, end: pageRange.end },
         size: state.file.size, callbackConfigured: Boolean(data.callback_configured),
         extractionOptions: extractionOptions(),
       };
@@ -499,7 +596,7 @@
       $("#submitError").classList.remove("hidden");
     } finally {
       $("#progressCard").classList.add("hidden");
-      $("#submitButton").disabled = !state.file || !state.configConfigured;
+      $("#submitButton").disabled = !state.file || !state.configConfigured || state.pageCountPending;
     }
   }
 
@@ -617,6 +714,18 @@
     if (!loaded) return;
     $("#packageName").textContent = safeText(record.packageName);
     $("#packageRequest").textContent = record.requestId ? `Request ${displayId(record.requestId)}` : "Request ID not returned";
+    if (record.sourcePageCount) {
+      $("#packageRequest").textContent += ` · Source PDF: ${record.sourcePageCount} pages`;
+    }
+    $("#sourcePdfName").textContent = safeText(record.filename || record.sourcePdf?.name || "Original uploaded PDF");
+    const sourceDetails = [
+      "Original uploaded PDF",
+      record.sourcePageCount ? `${record.sourcePageCount} pages` : "Page count unavailable",
+      record.pageRange ? `Processed pages ${record.pageRange.start}–${record.pageRange.end}` : "Full document processed",
+      record.sourcePdf ? prettyBytes(record.sourcePdf.size) : "Original file unavailable",
+    ];
+    $("#sourcePdfDetails").textContent = sourceDetails.join(" · ");
+    $("#sourcePdfCard").classList.toggle("hidden", !record.sourcePdf);
     $("#packageSize").textContent = prettyBytes(record.packageBytes);
     $("#packageTime").textContent = `Retrieved ${dateLabel(record.retrievedAt || record.submittedAt)}`;
     const categories = record.files.map((file) => artifactCategory(file.name));
@@ -662,6 +771,10 @@
       if (state.currentZip) downloadBlob(state.currentZip, record.packageName);
       else retrieveResult(record, $("#downloadAgain"));
     };
+    $("#previewSourcePdf").onclick = openOriginalPdfPreview;
+    $("#downloadSourcePdf").onclick = () => {
+      if (record.sourcePdf) downloadBlob(record.sourcePdf, record.filename || record.sourcePdf.name);
+    };
   }
 
   function setup() {
@@ -673,8 +786,8 @@
     $("#menuButton").addEventListener("click", () => $("#sidebar").classList.toggle("open"));
     $("#refreshHealth").addEventListener("click", checkHealth);
     $("#pdfFile").addEventListener("change", (event) => setFile(event.target.files?.[0]));
-    $("#startPage").addEventListener("input", () => $("#pageRangeError").classList.add("hidden"));
-    $("#endPage").addEventListener("input", () => $("#pageRangeError").classList.add("hidden"));
+    $("#startPage").addEventListener("input", handlePageRangeInput);
+    $("#endPage").addEventListener("input", handlePageRangeInput);
     $("#removeFile").addEventListener("click", resetFile);
     $("#submitButton").addEventListener("click", submit);
     $("#retrieveSubmitted").addEventListener("click", (event) => retrieveResult(state.currentSubmission, event.currentTarget));

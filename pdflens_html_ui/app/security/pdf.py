@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+from io import BytesIO
 from pathlib import Path
 
 MAX_UPLOAD_BYTES = int(os.getenv("PDFLENS_MAX_UPLOAD_BYTES", str(50 * 1024 * 1024)))
@@ -22,3 +23,17 @@ def validate_pdf(data: bytes) -> None:
         raise OverflowError(f"PDF exceeds the {MAX_UPLOAD_BYTES}-byte upload limit")
     if PDF_MAGIC not in data[:1024]:
         raise ValueError("Upload does not have a valid PDF signature")
+
+
+def count_pdf_pages(data: bytes) -> int | None:
+    """Return the readable PDF page count, or None when the PDF cannot be inspected."""
+    try:
+        from pypdf import PdfReader
+
+        reader = PdfReader(BytesIO(data), strict=False)
+        if reader.is_encrypted and reader.decrypt("") == 0:
+            return None
+        page_count = len(reader.pages)
+        return page_count if page_count > 0 else None
+    except Exception:
+        return None
