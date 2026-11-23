@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#f5f7fb" />
     <title>PDFLens · Document workspace</title>
-    <link rel="stylesheet" href="/ui/styles.css" />
-    <link rel="stylesheet" href="/ui/core.css" />
+    <link rel="stylesheet" href="/ui/styles.css?v=20261123" />
+    <link rel="stylesheet" href="/ui/core.css?v=20261123-page-range" />
     <script src="/ui/app.js" defer></script>
   </head>
   <body>
@@ -54,14 +54,17 @@
                   <div class="selected-file hidden" id="selectedFile"><span class="file-icon">PDF</span><div class="file-meta"><b id="fileName"></b><small id="fileSize"></small></div><button class="icon-button remove-file" id="removeFile" aria-label="Remove file">×</button></div>
                   <div class="field-error hidden" id="fileError"></div>
                 </div>
-                <div class="panel">
-                  <div class="panel-heading"><span class="step-number">2</span><div><h2>Choose content</h2><p>Select the document elements to extract.</p></div></div>
+                <div class="panel page-range-panel">
+                  <div class="panel-heading"><span class="step-number">2</span><div><h2>Page range <span class="optional-label">Optional</span></h2><p>Leave blank to process every page. The range includes both selected pages.</p></div></div>
                   <div class="page-range-fields">
-                    <label>Start page<input id="startPage" type="number" min="1" step="1" inputmode="numeric" placeholder="Optional" /></label>
-                    <label>End page<input id="endPage" type="number" min="1" step="1" inputmode="numeric" placeholder="Optional" /></label>
+                    <div class="page-range-control"><label for="startPage">Start page</label><input id="startPage" type="number" min="1" step="1" inputmode="numeric" placeholder="e.g. 1" aria-describedby="pageRangeHelp pageRangeError" /></div>
+                    <div class="page-range-control"><label for="endPage">End page</label><input id="endPage" type="number" min="1" step="1" inputmode="numeric" placeholder="e.g. 5" aria-describedby="pageRangeHelp pageRangeError" /></div>
                   </div>
-                  <small class="page-range-help">Leave both blank to process the full PDF. Enter both to process an inclusive page range.</small>
+                  <small class="page-range-help" id="pageRangeHelp">Enter both page numbers, or leave both empty.</small>
                   <div class="field-error hidden" id="pageRangeError" role="alert"></div>
+                </div>
+                <div class="panel">
+                  <div class="panel-heading"><span class="step-number">3</span><div><h2>Choose content</h2><p>Select the document elements to extract.</p></div></div>
                   <small id="callbackHelp" class="callback-help"></small>
                   <div class="option-grid" id="optionGrid">
                     <label class="option-card"><input type="checkbox" value="extract_tables" checked /><span class="checkmark"></span><span><b>Tables</b><small>Table extraction</small></span><span class="option-symbol">▦</span></label>
