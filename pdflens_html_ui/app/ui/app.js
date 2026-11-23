@@ -5,7 +5,8 @@
   const $$ = (selector) => [...document.querySelectorAll(selector)];
   const state = {
     file: null, currentZip: null, currentPackage: null, currentSubmission: null,
-    health: null, configConfigured: false, resultPollIntervalSeconds: 5, resultPollMaxWaitSeconds: 900,
+    health: null, configConfigured: false, previewObjectUrl: null,
+    resultPollIntervalSeconds: 5, resultPollMaxWaitSeconds: 900,
   };
 
   const prettyBytes = (bytes) => {
@@ -104,6 +105,20 @@
     return Object.fromEntries($$("#optionGrid input").map((input) => [input.value, input.checked]));
   }
 
+  function selectedPageRange() {
+    const startText = $("#startPage").value.trim();
+    const endText = $("#endPage").value.trim();
+    if (!startText && !endText) return { start: null, end: null, error: "" };
+    if (!startText || !endText) return { start: null, end: null, error: "Enter both a start page and an end page, or leave both blank." };
+    const start = Number(startText);
+    const end = Number(endText);
+    if (!Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end < 1) {
+      return { start: null, end: null, error: "Page numbers must be whole numbers starting at 1." };
+    }
+    if (start > end) return { start: null, end: null, error: "Start page must be less than or equal to end page." };
+    return { start, end, error: "" };
+  }
+
   function safeError(data, status) {
     if (typeof data?.detail === "string") return safeText(data.detail);
     const code = safeText(data?.detail?.code);
@@ -165,11 +180,13 @@
         throw new Error("The ZIP directory contains an invalid entry.");
       }
       const flags = view.getUint16(offset + 8, true);
+      const compressionMethod = view.getUint16(offset + 10, true);
       const compressedSize = view.getUint32(offset + 20, true);
       const size = view.getUint32(offset + 24, true);
       const nameLength = view.getUint16(offset + 28, true);
       const extraLength = view.getUint16(offset + 30, true);
       const commentLength = view.getUint16(offset + 32, true);
+      const localHeaderOffset = view.getUint32(offset + 42, true);
       const next = offset + 46 + nameLength + extraLength + commentLength;
       if (next > bytes.length) throw new Error("The ZIP directory contains an incomplete entry.");
       const decoderForName = flags & 0x0800 ? decoder : new TextDecoder("windows-1252");
@@ -185,9 +202,41 @@
       if (size > 0 && (compressedSize === 0 || size / compressedSize > 1000)) {
         throw new Error("The ZIP contains an entry with an unsafe compression ratio.");
       }
-      files.push({ name, size, type: name.includes(".") ? name.split(".").pop().toUpperCase() : "FILE" });
+      files.push({
+        name, size, compressedSize, compressionMethod, localHeaderOffset, flags,
+        type: name.includes(".") ? name.split(".").pop().toUpperCase() : "FILE",
+      });
     }
     return files;
+  }
+
+  async function readZipEntry(blob, entry) {
+    if (!blob || !entry) throw new Error("The package file is no longer available in this page session.");
+    if (entry.flags & 0x0001) throw new Error("This ZIP entry is encrypted and cannot be previewed here.");
+    const headerBuffer = await blob.slice(entry.localHeaderOffset, entry.localHeaderOffset + 30).arrayBuffer();
+    const header = new DataView(headerBuffer);
+    if (header.byteLength < 30 || header.getUint32(0, true) !== 0x04034b50) {
+      throw new Error("The selected file has an invalid ZIP local header.");
+    }
+    const nameLength = header.getUint16(26, true);
+    const extraLength = header.getUint16(28, true);
+    const dataOffset = entry.localHeaderOffset + 30 + nameLength + extraLength;
+    const compressed = blob.slice(dataOffset, dataOffset + entry.compressedSize);
+    let result;
+    if (entry.compressionMethod === 0) {
+      result = compressed;
+    } else if (entry.compressionMethod === 8 && typeof DecompressionStream !== "undefined") {
+      try {
+        const stream = compressed.stream().pipeThrough(new DecompressionStream("deflate-raw"));
+        result = await new Response(stream).blob();
+      } catch {
+        throw new Error("This browser cannot decompress this ZIP entry. Download the ZIP to open it.");
+      }
+    } else {
+      throw new Error("This file uses a ZIP compression method this browser cannot preview. Download the ZIP instead.");
+    }
+    if (result.size !== entry.size) throw new Error("The selected file did not decompress to its expected size.");
+    return result;
   }
 
   function artifactCategory(name) {
@@ -201,8 +250,210 @@
     return "Other file";
   }
 
+  function fileExtension(name) {
+    const leaf = name.split(/[\\/]/).pop() || "";
+    return leaf.includes(".") ? leaf.split(".").pop().toLowerCase() : "";
+  }
+
+  function canPreviewFile(file) {
+    return ["pdf", "docx", "json", "txt", "md", "csv", "xml", "html", "htm", "png", "jpg", "jpeg", "webp", "gif", "svg", "tif", "tiff"].includes(fileExtension(file.name));
+  }
+
+  function mimeTypeFor(name) {
+    const ext = fileExtension(name);
+    return ({
+      pdf: "application/pdf", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg",
+      webp: "image/webp", gif: "image/gif", svg: "image/svg+xml", tif: "image/tiff", tiff: "image/tiff",
+      json: "application/json", txt: "text/plain", md: "text/markdown", csv: "text/csv",
+      xml: "application/xml", html: "text/plain", htm: "text/plain",
+    })[ext] || "application/octet-stream";
+  }
+
+  function showPreviewError(message) {
+    const box = document.createElement("div");
+    box.className = "preview-error";
+    box.textContent = message;
+    $("#previewBody").replaceChildren(box);
+  }
+
+  function appendDocxParagraph(parent, paragraph, wordNamespace) {
+    const styleNode = paragraph.getElementsByTagNameNS(wordNamespace, "pStyle")[0];
+    const styleName = styleNode?.getAttributeNS(wordNamespace, "val") || styleNode?.getAttribute("w:val") || "";
+    const headingLevel = Number(styleName.match(/heading\s*(\d)/i)?.[1] || styleName.match(/Heading(\d)/)?.[1] || 0);
+    const tagName = headingLevel >= 1 && headingLevel <= 6 ? `h${headingLevel}` : "p";
+    const element = document.createElement(tagName);
+    for (const node of paragraph.getElementsByTagNameNS(wordNamespace, "t")) {
+      element.append(document.createTextNode(node.textContent || ""));
+    }
+    if (element.textContent.trim()) parent.append(element);
+  }
+
+  async function renderDocxPreview(docxBlob, container) {
+    const nestedFiles = await readZipDirectory(docxBlob);
+    const documentEntry = nestedFiles.find((entry) => entry.name === "word/document.xml");
+    if (!documentEntry) throw new Error("This DOCX does not contain its main document content.");
+    const xmlText = await (await readZipEntry(docxBlob, documentEntry)).text();
+    const xml = new DOMParser().parseFromString(xmlText, "application/xml");
+    if (xml.querySelector("parsererror")) throw new Error("The DOCX document XML could not be read.");
+    const wordNamespace = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+    const body = xml.getElementsByTagNameNS(wordNamespace, "body")[0];
+    if (!body) throw new Error("This DOCX has no readable document body.");
+    const preview = document.createElement("article");
+    preview.className = "docx-preview";
+    for (const child of body.children) {
+      if (child.localName === "p") {
+        appendDocxParagraph(preview, child, wordNamespace);
+      } else if (child.localName === "tbl") {
+        const table = document.createElement("table");
+        table.className = "preview-docx-table";
+        for (const row of child.getElementsByTagNameNS(wordNamespace, "tr")) {
+          const tr = document.createElement("tr");
+          for (const cell of row.getElementsByTagNameNS(wordNamespace, "tc")) {
+            const td = document.createElement("td");
+            for (const paragraph of cell.getElementsByTagNameNS(wordNamespace, "p")) {
+              appendDocxParagraph(td, paragraph, wordNamespace);
+            }
+            tr.append(td);
+          }
+          table.append(tr);
+        }
+        preview.append(table);
+      }
+    }
+    if (!preview.childNodes.length) throw new Error("No readable paragraphs or tables were found in the DOCX.");
+    const note = document.createElement("p");
+    note.className = "preview-note";
+    note.textContent = "Text preview only. Download the DOCX to see its full Word layout and styling.";
+    container.replaceChildren(note, preview);
+  }
+
+  function parseCsv(text) {
+    const rows = [];
+    let row = [];
+    let cell = "";
+    let quoted = false;
+    for (let index = 0; index < text.length; index += 1) {
+      const char = text[index];
+      if (char === '"' && quoted && text[index + 1] === '"') { cell += '"'; index += 1; }
+      else if (char === '"') quoted = !quoted;
+      else if (char === "," && !quoted) { row.push(cell); cell = ""; }
+      else if ((char === "\n" || char === "\r") && !quoted) {
+        if (char === "\r" && text[index + 1] === "\n") index += 1;
+        row.push(cell); rows.push(row); row = []; cell = "";
+      } else cell += char;
+    }
+    if (cell || row.length) { row.push(cell); rows.push(row); }
+    return rows;
+  }
+
+  function renderCsvPreview(text, container) {
+    const allRows = parseCsv(text);
+    const rows = allRows.slice(0, 500);
+    const table = document.createElement("table");
+    table.className = "preview-text-table";
+    rows.forEach((row, index) => {
+      const tr = document.createElement("tr");
+      row.forEach((value) => {
+        const cell = document.createElement(index === 0 ? "th" : "td");
+        cell.textContent = value;
+        tr.append(cell);
+      });
+      table.append(tr);
+    });
+    container.replaceChildren(table);
+    if (allRows.length > 500) {
+      const note = document.createElement("p");
+      note.className = "preview-note";
+      note.textContent = "Showing the first 500 rows. Download the file to see the complete content.";
+      container.prepend(note);
+    }
+  }
+
+  async function openFilePreview(file) {
+    if (!state.currentZip) { toast("The package preview is no longer available; retrieve the ZIP again."); return; }
+    if (state.previewObjectUrl) URL.revokeObjectURL(state.previewObjectUrl);
+    state.previewObjectUrl = null;
+    const modal = $("#previewModal");
+    const container = $("#previewBody");
+    $("#previewTitle").textContent = safeText(file.name);
+    $("#previewSubtitle").textContent = `${artifactCategory(file.name)} · ${prettyBytes(file.size)}`;
+    container.replaceChildren(Object.assign(document.createElement("p"), { className: "preview-loading", textContent: "Opening file…" }));
+    modal.classList.remove("hidden");
+    document.body.classList.add("preview-open");
+    $("#previewDownload").onclick = () => downloadPackageFile(file);
+    try {
+      if (file.size > 100 * 1024 * 1024) throw new Error("This file is too large to preview in the browser. Use Download file instead.");
+      const blob = await readZipEntry(state.currentZip, file);
+      const ext = fileExtension(file.name);
+      if (ext === "docx") {
+        await renderDocxPreview(blob, container);
+      } else if (ext === "pdf") {
+        const url = URL.createObjectURL(blob.slice(0, blob.size, "application/pdf"));
+        state.previewObjectUrl = url;
+        const frame = document.createElement("iframe");
+        frame.className = "preview-pdf-frame";
+        frame.title = `PDF preview: ${safeText(file.name)}`;
+        frame.src = url;
+        container.replaceChildren(frame);
+      } else if (["png", "jpg", "jpeg", "webp", "gif", "svg", "tif", "tiff"].includes(ext)) {
+        const url = URL.createObjectURL(blob.slice(0, blob.size, mimeTypeFor(file.name)));
+        state.previewObjectUrl = url;
+        const image = document.createElement("img");
+        image.className = "preview-image";
+        image.alt = safeText(file.name);
+        image.src = url;
+        container.replaceChildren(image);
+      } else {
+        const text = await blob.text();
+        if (ext === "json") {
+          const pre = document.createElement("pre");
+          pre.className = "preview-code";
+          try { pre.textContent = JSON.stringify(JSON.parse(text), null, 2); }
+          catch { pre.textContent = text; }
+          container.replaceChildren(pre);
+        } else if (ext === "csv") {
+          renderCsvPreview(text, container);
+        } else {
+          const pre = document.createElement("pre");
+          pre.className = "preview-code";
+          pre.textContent = text;
+          container.replaceChildren(pre);
+        }
+      }
+    } catch (error) {
+      showPreviewError(error.message || "This file cannot be previewed in the browser.");
+    }
+  }
+
+  async function downloadPackageFile(file) {
+    if (!state.currentZip) { toast("The package is no longer available; retrieve the ZIP again."); return; }
+    try {
+      const blob = await readZipEntry(state.currentZip, file);
+      downloadBlob(blob, file.name);
+    } catch (error) {
+      toast(error.message || "Could not extract this file from the ZIP.");
+    }
+  }
+
+  function closePreview() {
+    $("#previewModal").classList.add("hidden");
+    document.body.classList.remove("preview-open");
+    $("#previewBody").replaceChildren();
+    if (state.previewObjectUrl) URL.revokeObjectURL(state.previewObjectUrl);
+    state.previewObjectUrl = null;
+  }
+
   async function submit() {
     if (!state.file || !state.configConfigured) return;
+    const pageRange = selectedPageRange();
+    const pageRangeError = $("#pageRangeError");
+    if (pageRange.error) {
+      pageRangeError.textContent = pageRange.error;
+      pageRangeError.classList.remove("hidden");
+      return;
+    }
+    pageRangeError.classList.add("hidden");
+    pageRangeError.textContent = "";
     $("#submitError").classList.add("hidden");
     $("#submissionSuccess").classList.add("hidden");
     $("#resultPollingError").classList.add("hidden");
@@ -211,6 +462,10 @@
     const body = new FormData();
     body.append("file", state.file, state.file.name);
     for (const [name, value] of Object.entries(extractionOptions())) body.append(name, String(value));
+    if (pageRange.start !== null && pageRange.end !== null) {
+      body.append("start_page", String(pageRange.start));
+      body.append("end_page", String(pageRange.end));
+    }
     const started = new Date().toISOString();
     let requestId = "";
     try {
@@ -386,7 +641,21 @@
       badge.className = "category-badge";
       badge.textContent = artifactCategory(file.name);
       category.append(badge);
-      tr.append(name, type, size, category);
+      const actions = document.createElement("td");
+      actions.className = "package-file-actions";
+      if (canPreviewFile(file)) {
+        const preview = document.createElement("button");
+        preview.className = "button button-secondary package-action";
+        preview.textContent = "Preview";
+        preview.addEventListener("click", () => openFilePreview(file));
+        actions.append(preview);
+      }
+      const download = document.createElement("button");
+      download.className = "button button-secondary package-action";
+      download.textContent = "Download";
+      download.addEventListener("click", () => downloadPackageFile(file));
+      actions.append(download);
+      tr.append(name, type, size, category, actions);
       tbody.append(tr);
     });
     $("#downloadAgain").onclick = () => {
@@ -404,9 +673,18 @@
     $("#menuButton").addEventListener("click", () => $("#sidebar").classList.toggle("open"));
     $("#refreshHealth").addEventListener("click", checkHealth);
     $("#pdfFile").addEventListener("change", (event) => setFile(event.target.files?.[0]));
+    $("#startPage").addEventListener("input", () => $("#pageRangeError").classList.add("hidden"));
+    $("#endPage").addEventListener("input", () => $("#pageRangeError").classList.add("hidden"));
     $("#removeFile").addEventListener("click", resetFile);
     $("#submitButton").addEventListener("click", submit);
     $("#retrieveSubmitted").addEventListener("click", (event) => retrieveResult(state.currentSubmission, event.currentTarget));
+    $("#closePreview").addEventListener("click", closePreview);
+    $("#previewModal").addEventListener("click", (event) => {
+      if (event.target === $("#previewModal")) closePreview();
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && !$("#previewModal").classList.contains("hidden")) closePreview();
+    });
     $("#dropzone").addEventListener("dragover", (event) => { event.preventDefault(); $("#dropzone").classList.add("dragover"); });
     $("#dropzone").addEventListener("dragleave", () => $("#dropzone").classList.remove("dragover"));
     $("#dropzone").addEventListener("drop", (event) => {

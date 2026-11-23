@@ -61,9 +61,18 @@ async def submit_job(
     extract_footer: bool = Form(True),
     extract_hyperlinks: bool = Form(True),
     extract_footnotes: bool = Form(False),
+    start_page: int | None = Form(None),
+    end_page: int | None = Form(None),
 ) -> dict[str, object]:
     if not settings.config_id:
         raise HTTPException(status_code=503, detail="PDFLENS_CONFIG_ID is not configured on the UI service.")
+    if (start_page is None) != (end_page is None):
+        raise HTTPException(status_code=422, detail="Provide both start_page and end_page, or leave both blank.")
+    if start_page is not None and end_page is not None:
+        if start_page < 1 or end_page < 1:
+            raise HTTPException(status_code=422, detail="Page numbers must be 1 or greater.")
+        if start_page > end_page:
+            raise HTTPException(status_code=422, detail="start_page must be less than or equal to end_page.")
 
     content = await file.read(MAX_UPLOAD_BYTES + 1)
     try:
@@ -98,12 +107,16 @@ async def submit_job(
         "extract_hyperlinks": extract_hyperlinks,
         "extract_footnotes": extract_footnotes,
     }
+    if start_page is not None and end_page is not None:
+        upstream_body["start_page"] = start_page
+        upstream_body["end_page"] = end_page
     if settings.callback_url:
         upstream_body["callback_url"] = settings.callback_url
     info(logger, "pdflens_submit_started", file_id=file_record["file_id"],
          extract_tables=extract_tables, extract_images=extract_images,
          extract_header=extract_header, extract_footer=extract_footer,
-         extract_hyperlinks=extract_hyperlinks, extract_footnotes=extract_footnotes)
+         extract_hyperlinks=extract_hyperlinks, extract_footnotes=extract_footnotes,
+         start_page=start_page, end_page=end_page)
     try:
         result = await run_in_threadpool(submit_pdf, upstream_body)
     except PdfLensUpstreamError as exc:

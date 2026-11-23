@@ -33,6 +33,8 @@ Use Python 3.11 or newer and install `uv`. From this folder:
 
 The browser uses the same-origin `/ui-api/*` routes. The backend keeps credentials off the browser and displays the status returned by the submit API. When result retrieval reports queued/processing, the UI repeats the result call at `PDFLENS_RESULT_POLL_INTERVAL_SECONDS` until it receives a ZIP or reaches `PDFLENS_RESULT_POLL_MAX_WAIT_SECONDS`. The UI shows the current attempt and elapsed time; server logs record each request ID, attempt, upstream state, and duration. No request history is stored in the service or browser. The request ID exists in page memory only and is lost when the page is reloaded or closed.
 
+The processed-package page previews PDFs in the browser, renders DOCX text with headings and tables, formats JSON, displays supported image snapshots, and previews text/CSV/XML files. Each package entry can also be downloaded individually. DOCX previews are for reading content; download the DOCX for its full Word styling.
+
 Backend logs go to standard output and to `LOG_PATH` (default `logs/pdflens.log`), rotating daily and retaining 14 backups. Set `LOG_LEVEL=DEBUG`, `INFO`, `WARNING`, or `ERROR` in `.env` to adjust verbosity. `app/configs/log_config.py` configures logging, while `app/utils/log_utils.py` provides the shared logger and formats event fields while redacting secret-like values. Logs cover File Manager uploads, PDFLens submissions, and each result polling attempt without logging JWTs or endpoint URLs.
 
 Do not place credentials in `.env.example` or share a populated `.env`. For access from another machine, configure `HOST=0.0.0.0` when running `make run` only if your organization permits it, then use that PC's reachable address.
