@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import logging
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -10,8 +9,9 @@ from io import BytesIO
 from typing import Any
 
 from app.config import settings
+from app.utils.log_utils import get_app_logger, info, warning
 
-logger = logging.getLogger("pdflens.gateway")
+logger = get_app_logger()
 
 
 class PdfLensUpstreamError(RuntimeError):
@@ -67,7 +67,7 @@ def _request(
             message = "PDFLens could not complete the request right now. Retry when the service is ready."
         else:
             message = f"PDFLens returned an unsuccessful response (HTTP {exc.code})."
-        logger.warning("upstream_http_error method=%s status=%s", method, exc.code)
+        warning(logger, "upstream_http_error", method=method, status=exc.code)
         raise PdfLensUpstreamError(
             message,
             status_code=502,
@@ -75,7 +75,7 @@ def _request(
             upstream_status=exc.code,
         ) from exc
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
-        logger.warning("upstream_connection_error method=%s error_type=%s", method, type(exc).__name__)
+        warning(logger, "upstream_connection_error", method=method, error_type=type(exc).__name__)
         raise PdfLensUpstreamError(
             "Could not reach PDFLens. Check the service URL, network connection, and timeout settings.",
             status_code=504 if isinstance(exc, TimeoutError) else 502,
@@ -144,6 +144,7 @@ def retrieve_result(request_id: str) -> tuple[bytes | None, str | None, str | No
     if method not in {"GET", "POST"}:
         raise PdfLensUpstreamError("PDFLENS_API_RESULT_METHOD must be GET or POST.", status_code=503)
     try:
+        info(logger, "pdflens_result_request_started", request_id=request_id, method=method)
         if method == "GET":
             separator = "&" if "?" in settings.result_url else "?"
             url = settings.result_url + separator + urllib.parse.urlencode({"request_id": request_id})
@@ -155,10 +156,12 @@ def retrieve_result(request_id: str) -> tuple[bytes | None, str | None, str | No
     except PdfLensUpstreamError as exc:
         if not exc.retryable:
             raise
-        logger.warning(
-            "result_poll_transient_error request_id=%s http_status=%s",
-            request_id,
-            exc.upstream_status or exc.status_code,
+        warning(
+            logger,
+            "result_poll_transient_error",
+            request_id=request_id,
+            http_status=exc.upstream_status or exc.status_code,
+            method=method,
         )
         return None, None, "retrying"
 
@@ -166,7 +169,7 @@ def retrieve_result(request_id: str) -> tuple[bytes | None, str | None, str | No
     if data.startswith((b"PK\x03\x04", b"PK\x05\x06")) or "zip" in content_type:
         validate_result_zip(data)
         filename = _zip_filename(headers.get("Content-Disposition", ""), request_id)
-        logger.info("result_poll_zip_ready request_id=%s http_status=%s", request_id, response_status)
+        info(logger, "result_poll_zip_ready", request_id=request_id, http_status=response_status, method=method)
         return data, filename, None
 
     try:
@@ -176,23 +179,15 @@ def retrieve_result(request_id: str) -> tuple[bytes | None, str | None, str | No
     status = _response_status(payload)
     if response_status == 202:
         status = status or "processing"
-        logger.info(
-            "result_poll_pending request_id=%s upstream_status=%s http_status=%s",
-            request_id,
-            status[:80],
-            response_status,
-        )
+        info(logger, "result_poll_pending", request_id=request_id, upstream_status=status[:80],
+             http_status=response_status, method=method)
         return None, None, status
     if status and _is_pending_status(status):
-        logger.info(
-            "result_poll_pending request_id=%s upstream_status=%s http_status=%s",
-            request_id,
-            status[:80],
-            response_status,
-        )
+        info(logger, "result_poll_pending", request_id=request_id, upstream_status=status[:80],
+             http_status=response_status, method=method)
         return None, None, status
     if status and _is_failed_status(status):
-        logger.warning("result_poll_failed request_id=%s upstream_status=%s", request_id, status[:80])
+        warning(logger, "result_poll_failed", request_id=request_id, upstream_status=status[:80], method=method)
         raise PdfLensUpstreamError(f"PDFLens reported a terminal processing status: {status[:80]}.", status_code=502)
     raise PdfLensUpstreamError("PDFLens has not returned a ZIP or a recognized queued/processing status.")
 

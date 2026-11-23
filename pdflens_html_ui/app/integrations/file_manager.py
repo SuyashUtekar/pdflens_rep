@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import logging
 import mimetypes
 import urllib.error
 import urllib.parse
@@ -10,8 +9,9 @@ import uuid
 from typing import Any
 
 from app.config import settings
+from app.utils.log_utils import get_app_logger, info, warning
 
-logger = logging.getLogger("pdflens.file_manager")
+logger = get_app_logger()
 
 
 class FileManagerError(RuntimeError):
@@ -55,6 +55,7 @@ def upload_file(content: bytes, filename: str, content_type: str) -> dict[str, s
     ))
     headers = _auth_headers()
     headers["Content-Type"] = f"multipart/form-data; boundary={boundary}"
+    info(logger, "file_manager_upload_started", filename=safe_name, bytes=len(content), field=field_name)
     request = urllib.request.Request(settings.file_manager_upload_url, data=body, headers=headers, method="POST")
     try:
         with urllib.request.urlopen(request, timeout=settings.timeout_seconds) as response:
@@ -66,10 +67,10 @@ def upload_file(content: bytes, filename: str, content_type: str) -> dict[str, s
             message = "File Manager did not authorize the upload. Check its JWT settings."
         else:
             message = f"File Manager upload failed (HTTP {exc.code})."
-        logger.warning("file_manager_upload_http_error status=%s", exc.code)
+        warning(logger, "file_manager_upload_http_error", status=exc.code)
         raise FileManagerError(message, status_code=502) from exc
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
-        logger.warning("file_manager_upload_connection_error error_type=%s", type(exc).__name__)
+        warning(logger, "file_manager_upload_connection_error", error_type=type(exc).__name__)
         raise FileManagerError("Could not reach File Manager. Check its URL and network connection.", status_code=502) from exc
 
     try:
@@ -90,5 +91,5 @@ def upload_file(content: bytes, filename: str, content_type: str) -> dict[str, s
 
     file_id_text = str(file_id).strip()
     download_url = template.replace("{file_id}", urllib.parse.quote(file_id_text, safe=""))
-    logger.info("file_manager_upload_succeeded file_id=%s", file_id_text)
+    info(logger, "file_manager_upload_succeeded", file_id=file_id_text, filename=safe_name)
     return {"file_id": file_id_text, "download_url": download_url}
