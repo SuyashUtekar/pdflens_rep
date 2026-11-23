@@ -19,7 +19,7 @@ Per-page metadata includes the one-based physical index, printed page label when
 
 The browser UI does not call this project's local `POST /v1/extract`. On upload, the UI gateway first calls the configured File Manager upload API using multipart field `files`. It reads the returned `file_id`, inserts it into `FILE_MANAGER_API_DOWNLOAD_URL_TEMPLATE`, and uses the resulting URL for PDFLens `file_path`. The UI gateway then calls the three hosted PDFLens APIs configured in `.env.example`:
 
-1. Submit: `POST` JSON containing `file_path`, the server-configured `PDFLENS_CONFIG_ID`, the extraction booleans, and optional `callback_url`; the response supplies `request_id` and `status`. The configuration ID is never sent from or displayed in the browser UI.
+1. Submit: `POST` JSON containing `file_path`, the server-configured `PDFLENS_CONFIG_ID`, the extraction booleans, optional `start_page` and `end_page`, and optional `callback_url`; the response supplies `request_id` and `status`. The page range is inclusive; omit both page fields to process the full PDF. The configuration ID is never sent from or displayed in the browser UI.
 2. Result: configured method and URL, sending `request_id`; the response may first be JSON with a queued/processing state (including HTTP 202), and later returns a ZIP archive.
 3. Health: configured method and URL, defaulting to `GET`.
 

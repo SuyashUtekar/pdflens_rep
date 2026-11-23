@@ -31,6 +31,8 @@ This folder is a standalone copy of the PDFLens browser UI and the small FastAPI
 
 Logs are written to the terminal and to `LOG_PATH` (default `logs/pdflens.log`), rotating daily with 14 backups. Set `LOG_LEVEL=DEBUG`, `INFO`, `WARNING`, or `ERROR` in `.env` to change verbosity. `app/configs/log_config.py` configures logging and `app/utils/log_utils.py` formats event logs while redacting secret-like fields.
 
+The processed-package page can preview PDFs, DOCX text and tables, JSON, supported image snapshots, and text/CSV/XML files. Package entries can also be downloaded individually. Download DOCX files to view their complete Word styling.
+
 The browser calls this app's same-origin `/ui-api/*` routes. The backend sends the PDFLens request and API credentials; these values are not exposed in browser JavaScript. If result retrieval reports queued/processing, the browser retries at the configured interval until a ZIP arrives or the maximum wait expires. The interface shows elapsed time and attempt number; server logs record the request ID, attempt, upstream state, and duration. No request history is saved; the current request is held in page memory only until the page is reloaded or closed.
 
 Do not copy real credentials into `.env.example` or share a populated `.env`. The `.env` file is ignored by version control by convention; protect it according to your organization’s secret-handling rules.
