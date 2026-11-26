@@ -419,7 +419,7 @@
   function createPackageFileRow(file, group = "") {
     const tr = document.createElement("tr");
     if (group) {
-      tr.dataset.assetGroup = group;
+      tr.dataset.packageGroup = group;
       tr.hidden = true;
     }
     const name = document.createElement("td");
@@ -453,21 +453,21 @@
     return tr;
   }
 
-  function createAssetFolderRow(label, group, files) {
+  function createPackageFolderRow(label, group, files) {
     const row = document.createElement("tr");
-    row.className = "asset-folder-row";
+    row.className = "package-folder-row";
     const cell = document.createElement("td");
     cell.colSpan = 5;
     const toggle = document.createElement("button");
-    toggle.className = "asset-folder-toggle";
+    toggle.className = "package-folder-toggle";
     toggle.type = "button";
     toggle.setAttribute("aria-expanded", "false");
     const chevron = document.createElement("span");
-    chevron.className = "asset-folder-chevron";
+    chevron.className = "package-folder-chevron";
     chevron.setAttribute("aria-hidden", "true");
     chevron.textContent = "›";
     const icon = document.createElement("span");
-    icon.className = "asset-folder-icon";
+    icon.className = "package-folder-icon";
     icon.setAttribute("aria-hidden", "true");
     icon.textContent = "▰";
     const title = document.createElement("b");
@@ -478,7 +478,7 @@
     toggle.addEventListener("click", () => {
       const expanded = toggle.getAttribute("aria-expanded") !== "true";
       toggle.setAttribute("aria-expanded", String(expanded));
-      row.parentElement.querySelectorAll(`[data-asset-group="${group}"]`).forEach((fileRow) => {
+      row.parentElement.querySelectorAll(`[data-package-group="${group}"]`).forEach((fileRow) => {
         fileRow.hidden = !expanded;
       });
     });
@@ -928,18 +928,20 @@
     $("#packageAssets").textContent = String(categories.filter((category) => ["Image asset", "Table snapshot"].includes(category)).length);
     const tbody = $("#packageRows");
     tbody.replaceChildren();
-    const imageFiles = record.files.filter((file) => artifactCategory(file.name) === "Image asset");
-    const tableFiles = record.files.filter((file) => artifactCategory(file.name) === "Table snapshot");
+    const folderGroups = [
+      { id: "docx", label: "DOCX documents", matches: (file) => fileExtension(file.name) === "docx" },
+      { id: "metadata", label: "Metadata JSON", matches: (file) => artifactCategory(file.name) === "Metadata" },
+      { id: "images", label: "Images", matches: (file) => artifactCategory(file.name) === "Image asset" },
+      { id: "tables", label: "Tables", matches: (file) => artifactCategory(file.name) === "Table snapshot" },
+    ].map((group) => ({ ...group, files: record.files.filter(group.matches) }));
     const insertedGroups = new Set();
     for (const file of record.files) {
-      const category = artifactCategory(file.name);
-      const group = category === "Image asset" ? "images" : category === "Table snapshot" ? "tables" : "";
+      const group = folderGroups.find((candidate) => candidate.matches(file));
       if (group) {
-        if (!insertedGroups.has(group)) {
-          const groupFiles = group === "images" ? imageFiles : tableFiles;
-          tbody.append(createAssetFolderRow(group === "images" ? "Images" : "Tables", group, groupFiles));
-          groupFiles.forEach((groupFile) => tbody.append(createPackageFileRow(groupFile, group)));
-          insertedGroups.add(group);
+        if (!insertedGroups.has(group.id)) {
+          tbody.append(createPackageFolderRow(group.label, group.id, group.files));
+          group.files.forEach((groupFile) => tbody.append(createPackageFileRow(groupFile, group.id)));
+          insertedGroups.add(group.id);
         }
         continue;
       }
