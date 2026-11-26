@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import asyncio
+import hmac
+import json
 import time
 from datetime import datetime, timezone
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, quote, urljoin, urlsplit
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
-from fastapi.responses import JSONResponse, Response
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 from starlette.concurrency import run_in_threadpool
 
@@ -17,6 +20,95 @@ from app.utils.log_utils import get_app_logger, info, warning
 
 logger = get_app_logger()
 router = APIRouter(prefix="/ui-api", tags=["PDFLens UI gateway"])
+_webhook_events: dict[str, list[dict[str, object]]] = {}
+_webhook_subscribers: dict[str, set[asyncio.Queue[dict[str, object]]]] = {}
+_webhook_event_id = 0
+_MAX_WEBHOOK_REQUESTS = 500
+_MAX_WEBHOOK_EVENTS_PER_REQUEST = 200
+
+
+def _default_webhook_url() -> str:
+    if not settings.webhook_public_base_url or not settings.webhook_secret:
+        return ""
+    try:
+        base = urlsplit(settings.webhook_public_base_url)
+        if (
+            base.scheme not in {"http", "https"}
+            or not base.hostname
+            or base.username is not None
+            or base.password is not None
+            or (base.port is not None and not 1 <= base.port <= 65535)
+        ):
+            return ""
+        endpoint = urljoin(f"{settings.webhook_public_base_url}/", "ui-api/webhook")
+        query_key = quote(settings.webhook_token_query_parameter, safe="")
+        return f"{endpoint}?{query_key}={quote(settings.webhook_secret, safe='')}"
+    except ValueError:
+        return ""
+
+
+def _is_ui_webhook_url(value: str) -> bool:
+    if not settings.webhook_secret:
+        return False
+    try:
+        candidate = urlsplit(value)
+        expected = urlsplit(_default_webhook_url())
+        candidate_token = parse_qs(candidate.query).get(settings.webhook_token_query_parameter, [""])[0]
+        return bool(
+            expected.hostname
+            and candidate.scheme in {"http", "https"}
+            and candidate.hostname.casefold() == expected.hostname.casefold()
+            and candidate.port == expected.port
+            and candidate.path.rstrip("/") == expected.path.rstrip("/")
+            and (not candidate_token or hmac.compare_digest(candidate_token, settings.webhook_secret))
+        )
+    except ValueError:
+        return False
+
+
+def _callback_field(payload: object, names: set[str]) -> str:
+    if isinstance(payload, dict):
+        for key, value in payload.items():
+            normalized = str(key).casefold().replace("-", "_")
+            compact = normalized.replace("_", "")
+            if (normalized in names or compact in names) and isinstance(value, (str, int)):
+                value = str(value).strip()
+                if value:
+                    return value
+        nested_keys = {"data", "event", "payload", "result", "detail"}
+        for key, nested in payload.items():
+            if str(key).casefold() in nested_keys:
+                found = _callback_field(nested, names)
+                if found:
+                    return found
+    return ""
+
+
+def _publish_webhook_event(request_id: str, status: str) -> dict[str, object]:
+    global _webhook_event_id
+    if request_id not in _webhook_events and len(_webhook_events) >= _MAX_WEBHOOK_REQUESTS:
+        oldest_request_id = next(iter(_webhook_events))
+        _webhook_events.pop(oldest_request_id, None)
+        _webhook_subscribers.pop(oldest_request_id, None)
+    _webhook_event_id += 1
+    event = {
+        "event_id": _webhook_event_id,
+        "request_id": request_id,
+        "status": status,
+        "received_at": datetime.now(timezone.utc).isoformat(),
+    }
+    events = _webhook_events.setdefault(request_id, [])
+    events.append(event)
+    if len(events) > _MAX_WEBHOOK_EVENTS_PER_REQUEST:
+        del events[:-_MAX_WEBHOOK_EVENTS_PER_REQUEST]
+    for queue in tuple(_webhook_subscribers.get(request_id, set())):
+        if queue.full():
+            try:
+                queue.get_nowait()
+            except asyncio.QueueEmpty:
+                pass
+        queue.put_nowait(event)
+    return event
 
 
 class ResultRequest(BaseModel):
@@ -34,12 +126,19 @@ class ResultRequest(BaseModel):
 
 @router.get("/settings")
 def ui_settings() -> dict[str, object]:
+    callback_configured = bool(settings.callback_url or _default_webhook_url())
     return {
         "configured": bool(settings.config_id),
         "file_manager_configured": bool(
             settings.file_manager_upload_url and "{file_id}" in settings.file_manager_download_url_template
         ),
-        "callback_configured": bool(settings.callback_url),
+        "callback_configured": callback_configured,
+        "webhook_receiver_ready": bool(_default_webhook_url()),
+        "callback_uses_app_receiver_by_default": (
+            _is_ui_webhook_url(settings.callback_url)
+            if settings.callback_url
+            else bool(_default_webhook_url())
+        ),
         "result_poll_interval_seconds": settings.result_poll_interval_seconds,
         "result_poll_max_wait_seconds": settings.result_poll_max_wait_seconds,
     }
@@ -111,7 +210,7 @@ async def submit_job(
                 detail=f"End page cannot exceed this PDF's {page_count}-page limit.",
             )
 
-    selected_callback_url = callback_url.strip() or settings.callback_url
+    selected_callback_url = callback_url.strip() or settings.callback_url or _default_webhook_url()
     if selected_callback_url:
         try:
             callback_parts = urlsplit(selected_callback_url)
@@ -177,7 +276,92 @@ async def submit_job(
         "page_count": page_count,
         "submitted_at": datetime.now(timezone.utc).isoformat(),
         "callback_configured": bool(selected_callback_url),
+        "webhook_enabled": _is_ui_webhook_url(selected_callback_url),
     }
+
+
+@router.post("/webhook")
+async def receive_pdflens_webhook(
+    request: Request,
+) -> dict[str, object]:
+    """Accept a minimal PDFLens request_id/status callback and publish it to the UI."""
+    if not settings.webhook_secret:
+        raise HTTPException(status_code=503, detail="PDFLens webhook receiver is not configured.")
+    supplied_token = request.query_params.get(settings.webhook_token_query_parameter, "")
+    if not supplied_token:
+        supplied_token = request.headers.get(settings.webhook_token_header, "")
+        if settings.webhook_token_prefix and supplied_token.startswith(settings.webhook_token_prefix):
+            supplied_token = supplied_token[len(settings.webhook_token_prefix):].strip()
+    if not hmac.compare_digest(supplied_token, settings.webhook_secret):
+        warning(logger, "pdflens_webhook_rejected", reason="invalid_token")
+        raise HTTPException(status_code=401, detail="Webhook authentication failed.")
+    raw_body = await request.body()
+    if len(raw_body) > 64 * 1024:
+        raise HTTPException(status_code=413, detail="Webhook payload is too large.")
+    try:
+        payload = json.loads(raw_body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=400, detail="Webhook payload must be valid JSON.") from exc
+    request_id_fields = {
+        field.strip().casefold().replace("-", "_")
+        for field in settings.webhook_request_id_fields.split(",")
+        if field.strip()
+    }
+    status_fields = {
+        field.strip().casefold().replace("-", "_")
+        for field in settings.webhook_status_fields.split(",")
+        if field.strip()
+    }
+    request_id = _callback_field(payload, request_id_fields)[:300]
+    status = _callback_field(payload, status_fields)[:100]
+    if not request_id or not status:
+        raise HTTPException(status_code=422, detail="Webhook payload must contain request_id and status.")
+    event = _publish_webhook_event(request_id, status)
+    info(logger, "pdflens_webhook_received", request_id=request_id, upstream_status=status[:80], event_id=event["event_id"])
+    return {"received": True, "request_id": request_id}
+
+
+@router.get("/webhook-events/{request_id}")
+async def stream_webhook_events(request_id: str) -> StreamingResponse:
+    """Stream callbacks to the open UI without repeatedly requesting PDFLens status."""
+    request_id = request_id.strip()
+    if not request_id or len(request_id) > 300:
+        raise HTTPException(status_code=422, detail="Invalid request ID.")
+
+    async def event_stream():
+        queue: asyncio.Queue[dict[str, object]] = asyncio.Queue(maxsize=100)
+        _webhook_subscribers.setdefault(request_id, set()).add(queue)
+        last_event_id = 0
+        try:
+            yield ": connected\n\n"
+            for event in list(_webhook_events.get(request_id, [])):
+                event_id = int(event["event_id"])
+                if event_id > last_event_id:
+                    last_event_id = event_id
+                    yield f"event: status\ndata: {json.dumps(event, ensure_ascii=False)}\n\n"
+            while True:
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=20)
+                except asyncio.TimeoutError:
+                    yield ": keep-alive\n\n"
+                    continue
+                event_id = int(event["event_id"])
+                if event_id <= last_event_id:
+                    continue
+                last_event_id = event_id
+                yield f"event: status\ndata: {json.dumps(event, ensure_ascii=False)}\n\n"
+        finally:
+            subscribers = _webhook_subscribers.get(request_id)
+            if subscribers:
+                subscribers.discard(queue)
+                if not subscribers:
+                    _webhook_subscribers.pop(request_id, None)
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.post("/results")

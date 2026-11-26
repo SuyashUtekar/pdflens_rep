@@ -6,8 +6,8 @@
     <meta name="theme-color" content="#f5f7fb" />
     <title>PDFLens · Document workspace</title>
     <link rel="stylesheet" href="/ui/styles.css?v=20261123" />
-    <link rel="stylesheet" href="/ui/core.css?v=20261123-manual-poll-audit-v3" />
-    <script src="/ui/app.js?v=20261123-manual-poll-audit-v3" defer></script>
+    <link rel="stylesheet" href="/ui/core.css?v=20261126-webhook-asset-folders-no-callback-field" />
+    <script src="/ui/app.js?v=20261126-webhook-asset-folders-no-callback-field" defer></script>
   </head>
   <body>
     <div class="app-shell">
@@ -76,11 +76,6 @@
                   </div>
                   <p class="core-fields-note"><span>i</span> Options are sent exactly as selected. Footnotes are off by default.</p>
                 </div>
-                <div class="panel callback-panel">
-                  <div class="panel-heading"><span class="step-number">4</span><div><h2>Callback URL <span class="optional-label">Optional</span></h2><p>Provide an endpoint for PDFLens to send status updates to.</p></div></div>
-                  <label class="callback-field" for="callbackUrl"><span>Callback endpoint</span><input id="callbackUrl" type="url" inputmode="url" autocomplete="url" placeholder="https://your-service.example/callback" aria-describedby="callbackHelp" /></label>
-                  <small id="callbackHelp" class="callback-help"></small>
-                </div>
                 <div class="submit-row"><div class="submit-note"><span>🔒</span><span>The PDF is uploaded to File Manager first. PDFLens then receives its configured download URL for processing.</span></div><button class="button button-primary button-large" id="submitButton" disabled><span>Submit for processing</span><b>→</b></button></div>
                 <div class="progress-card hidden" id="progressCard" role="status"><span class="spinner"></span><div><b>Uploading PDF and submitting to PDFLens</b><p>Saving the PDF in File Manager, then sending its download URL to PDFLens.</p></div></div>
                 <div class="submission-success hidden" id="submissionSuccess" role="status"><div class="success-check">✓</div><div class="submission-copy"><b>PDFLens accepted the request</b><p>Current status: <strong id="submissionStatus"></strong></p><small>Request ID: <code id="submissionRequestId"></code></small></div><button class="button button-secondary" id="retrieveSubmitted">Retrieve result</button></div>
@@ -89,7 +84,7 @@
                 <section class="request-audit hidden" data-request-audit aria-label="Request audit trail"><div class="request-audit-heading"><div><h3>Request audit trail</h3><p>Status updates received during this page session.</p></div><div class="audit-id"><small>REQUEST ID</small><code class="audit-request-id"></code></div></div><ol class="audit-events" aria-live="polite"></ol></section>
                 <div class="notice notice-error hidden" id="submitError" role="alert"><span class="notice-icon">!</span><div><b>We could not process this PDF</b><p id="submitErrorMessage"></p><small id="submitErrorId"></small></div></div>
               </div>
-              <aside class="side-column"><div class="side-info-card"><div class="side-info-icon">✦</div><h3>What you'll receive</h3><p>The ZIP returned by PDFLens for this request.</p><div class="expected-list"><div><span class="expected-icon">ZIP</span><span><b>Result package</b><small>Retrieved using the request ID</small></span></div><div><span class="expected-icon docx">↔</span><span><b>Actual file inventory</b><small>Based on files inside the ZIP</small></span></div><div><span class="expected-icon json">✓</span><span><b>ZIP safety checks</b><small>Paths and archive size are checked</small></span></div></div><div class="side-note">When PDFLens shows queued or processing, click Retrieve result to start polling. The UI checks again at the configured interval until the ZIP arrives or the wait limit is reached.</div></div><div class="side-info-card compact-info"><h3>Connection settings</h3><p>Service endpoints and authentication are loaded by the application from its environment file.</p></div></aside>
+              <aside class="side-column"><div class="side-info-card"><div class="side-info-icon">✦</div><h3>What you'll receive</h3><p>The ZIP returned by PDFLens for this request.</p><div class="expected-list"><div><span class="expected-icon">ZIP</span><span><b>Result package</b><small>Retrieved using the request ID</small></span></div><div><span class="expected-icon docx">↔</span><span><b>Actual file inventory</b><small>Based on files inside the ZIP</small></span></div><div><span class="expected-icon json">✓</span><span><b>ZIP safety checks</b><small>Paths and archive size are checked</small></span></div></div><div class="side-note">With the app webhook configured, PDFLens status updates stream here and the ZIP is requested once after completion. You can still check once manually. Without an in-app webhook, Retrieve result uses the configured polling interval.</div></div><div class="side-info-card compact-info"><h3>Connection settings</h3><p>Service endpoints and authentication are loaded by the application from its environment file.</p></div></aside>
             </div>
           </section>
 

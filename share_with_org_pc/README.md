@@ -18,7 +18,7 @@ This folder is a standalone copy of the PDFLens browser UI and the small FastAPI
 
 1. Copy this folder to the organization PC.
 2. Install `uv` and use a supported Python version (3.11 or newer).
-3. In this folder, copy `.env.example` to `.env` and enter the File Manager upload URL, download URL template, PDFLens API URLs, raw JWT in `PDFLENS_JWT_TOKEN`, and one `PDFLENS_CONFIG_ID`. The ID stays server-side and is not displayed in the UI. Do not include the `Bearer ` prefix in the token; the backend adds it. If File Manager uses a different token, set `FILE_MANAGER_JWT_TOKEN`. The Callback URL field in the UI is optional; a value entered there overrides `PDFLENS_CALLBACK_URL`, which is used as the default when the field is blank.
+3. In this folder, copy `.env.example` to `.env` and enter the File Manager upload URL, download URL template, PDFLens API URLs, raw JWT in `PDFLENS_JWT_TOKEN`, and one `PDFLENS_CONFIG_ID`. The ID stays server-side and is not displayed in the UI. Do not include the `Bearer ` prefix in the token; the backend adds it. If File Manager uses a different token, set `FILE_MANAGER_JWT_TOKEN`. The Callback URL field can override the default. To receive status updates in this UI, leave it blank and configure `PDFLENS_WEBHOOK_PUBLIC_BASE_URL` plus `PDFLENS_WEBHOOK_SECRET`; PDFLens must be able to reach that base URL.
 4. Ensure that PDFLens can reach and use the generated File Manager download URL to fetch each uploaded PDF.
 5. Run:
 
@@ -33,6 +33,6 @@ Logs are written to the terminal and to `LOG_PATH` (default `logs/pdflens.log`),
 
 The processed-package page can preview PDFs, DOCX text and tables, JSON, supported image snapshots, and text/CSV/XML files. Package entries can also be downloaded individually. Download DOCX files to view their complete Word styling.
 
-The browser calls this app's same-origin `/ui-api/*` routes. The backend sends the PDFLens request and API credentials; these values are not exposed in browser JavaScript. When PDFLens reports queued/processing, click Retrieve result to start polling at the configured interval until a ZIP arrives or the maximum wait expires. The interface shows elapsed time and attempt number; server logs record the request ID, attempt, upstream state, and duration. No request history is saved; the current request is held in page memory only until the page is reloaded or closed.
+The browser calls this app's same-origin `/ui-api/*` routes. The backend sends the PDFLens request and API credentials; these values are not exposed in browser JavaScript. When the in-app callback receiver is configured, the UI streams PDFLens status events and requests the ZIP once after a completion event. You can also make a one-time check. Without the receiver, Retrieve result uses interval-based checks. The interface shows elapsed time and attempt number; server logs record the request ID, attempt, upstream state, and duration. No request history is saved; the current request is held in page memory only until the page is reloaded or closed.
 
 Do not copy real credentials into `.env.example` or share a populated `.env`. The `.env` file is ignored by version control by convention; protect it according to your organization’s secret-handling rules.

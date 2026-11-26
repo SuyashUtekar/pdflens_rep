@@ -7,7 +7,7 @@
     file: null, currentZip: null, currentPackage: null, currentSubmission: null,
     health: null, configConfigured: false, previewObjectUrl: null,
     pageCount: null, pageCountAvailable: false, pageCountPending: false, pageInfoRequest: 0,
-    resultPollIntervalSeconds: 5, resultPollMaxWaitSeconds: 900, resultPolling: false,
+    resultPollIntervalSeconds: 5, resultPollMaxWaitSeconds: 900, resultPolling: false, webhookSource: null,
     comparePage: 1, compareMetadata: null, compareMetadataPromise: null,
     compareDocxPages: null, compareDocxParagraphs: null, compareDocxUsesBookmarks: false, compareDocxPromise: null,
     comparePdfUrl: null, comparePdfUrls: new Set(), compareAssetUrls: [], compareRenderId: 0, comparePageRenderId: 0,
@@ -225,6 +225,46 @@
     }
   }
 
+  function webhookStatusKind(status) {
+    const normalized = String(status || "").toLowerCase().replace(/[\s-]+/g, "_");
+    if (/fail|error|reject|cancel|expired|dead_letter/.test(normalized)) return "failed";
+    if (/not_complete|not_completed|not_success|not_ready|not_available/.test(normalized)) return "pending";
+    if (/complete|success|succeed|finished|(^|_)done($|_)|result_ready|(^|_)ready($|_)/.test(normalized)) return "complete";
+    if (/queue|pending|process|in_progress|running|accepted|submitted|started/.test(normalized)) return "pending";
+    return "unknown";
+  }
+
+  function listenForPdfLensWebhook(record) {
+    if (!record?.webhookEnabled || typeof EventSource === "undefined") return;
+    state.webhookSource?.close();
+    const source = new EventSource(`/ui-api/webhook-events/${encodeURIComponent(record.requestId)}`);
+    state.webhookSource = source;
+    source.addEventListener("status", (message) => {
+      if (state.currentSubmission !== record) return;
+      let event;
+      try { event = JSON.parse(message.data); } catch { return; }
+      const status = safeText(event.status || "Status update");
+      recordRequestAudit(record, status, "Status update received from the PDFLens webhook.");
+      $("#submissionStatus").textContent = status;
+      const kind = webhookStatusKind(status);
+      if (kind === "failed") {
+        source.close();
+        if (state.webhookSource === source) state.webhookSource = null;
+        recordRequestAudit(record, "Processing failed", "PDFLens reported a terminal failure status.");
+        return;
+      }
+      if (kind === "complete" && !record.webhookResultRequested) {
+        record.webhookResultRequested = true;
+        retrieveResult(record, null, { singleAttempt: true, triggeredByWebhook: true });
+      }
+    });
+    source.onerror = () => {
+      if (state.currentSubmission !== record || record.webhookConnectionIssueRecorded) return;
+      record.webhookConnectionIssueRecorded = true;
+      recordRequestAudit(record, "Webhook connection issue", "The live callback stream disconnected. It will reconnect; you can also check the result once manually.");
+    };
+  }
+
   function handlePageRangeInput(event) {
     const input = event.currentTarget;
     const error = $("#pageRangeError");
@@ -261,9 +301,6 @@
       if (Number.isFinite(data.result_poll_max_wait_seconds) && data.result_poll_max_wait_seconds > 0) {
         state.resultPollMaxWaitSeconds = data.result_poll_max_wait_seconds;
       }
-      $("#callbackHelp").textContent = data.callback_configured
-        ? "Optional. Leave blank to use the callback URL configured by the administrator."
-        : "Optional. Leave blank if PDFLens should not send callback updates.";
     } catch {
       state.configConfigured = false;
     }
@@ -377,6 +414,77 @@
 
   function canPreviewFile(file) {
     return ["pdf", "docx", "json", "txt", "md", "csv", "xml", "html", "htm", "png", "jpg", "jpeg", "webp", "gif", "svg", "tif", "tiff"].includes(fileExtension(file.name));
+  }
+
+  function createPackageFileRow(file, group = "") {
+    const tr = document.createElement("tr");
+    if (group) {
+      tr.dataset.assetGroup = group;
+      tr.hidden = true;
+    }
+    const name = document.createElement("td");
+    name.className = "file-name-cell";
+    name.textContent = safeText(file.name);
+    const type = document.createElement("td");
+    type.className = "file-type";
+    type.textContent = safeText(file.type);
+    const size = document.createElement("td");
+    size.textContent = prettyBytes(file.size);
+    const category = document.createElement("td");
+    const badge = document.createElement("span");
+    badge.className = "category-badge";
+    badge.textContent = artifactCategory(file.name);
+    category.append(badge);
+    const actions = document.createElement("td");
+    actions.className = "package-file-actions";
+    if (canPreviewFile(file)) {
+      const preview = document.createElement("button");
+      preview.className = "button button-secondary package-action";
+      preview.textContent = "Preview";
+      preview.addEventListener("click", () => openFilePreview(file));
+      actions.append(preview);
+    }
+    const download = document.createElement("button");
+    download.className = "button button-secondary package-action";
+    download.textContent = "Download";
+    download.addEventListener("click", () => downloadPackageFile(file));
+    actions.append(download);
+    tr.append(name, type, size, category, actions);
+    return tr;
+  }
+
+  function createAssetFolderRow(label, group, files) {
+    const row = document.createElement("tr");
+    row.className = "asset-folder-row";
+    const cell = document.createElement("td");
+    cell.colSpan = 5;
+    const toggle = document.createElement("button");
+    toggle.className = "asset-folder-toggle";
+    toggle.type = "button";
+    toggle.setAttribute("aria-expanded", "false");
+    const chevron = document.createElement("span");
+    chevron.className = "asset-folder-chevron";
+    chevron.setAttribute("aria-hidden", "true");
+    chevron.textContent = "›";
+    const icon = document.createElement("span");
+    icon.className = "asset-folder-icon";
+    icon.setAttribute("aria-hidden", "true");
+    icon.textContent = "▰";
+    const title = document.createElement("b");
+    title.textContent = label;
+    const count = document.createElement("small");
+    count.textContent = `${files.length} ${files.length === 1 ? "file" : "files"}`;
+    toggle.append(chevron, icon, title, count);
+    toggle.addEventListener("click", () => {
+      const expanded = toggle.getAttribute("aria-expanded") !== "true";
+      toggle.setAttribute("aria-expanded", String(expanded));
+      row.parentElement.querySelectorAll(`[data-asset-group="${group}"]`).forEach((fileRow) => {
+        fileRow.hidden = !expanded;
+      });
+    });
+    cell.append(toggle);
+    row.append(cell);
+    return row;
   }
 
   function mimeTypeFor(name) {
@@ -584,6 +692,8 @@
 
   async function submit() {
     if (!state.file || !state.configConfigured || state.pageCountPending) return;
+    state.webhookSource?.close();
+    state.webhookSource = null;
     const pageRange = selectedPageRange();
     const pageRangeError = $("#pageRangeError");
     if (pageRange.error) {
@@ -605,8 +715,6 @@
       body.append("start_page", String(pageRange.start));
       body.append("end_page", String(pageRange.end));
     }
-    const callbackUrl = $("#callbackUrl").value.trim();
-    if (callbackUrl) body.append("callback_url", callbackUrl);
     const started = new Date().toISOString();
     let requestId = "";
     try {
@@ -627,7 +735,7 @@
         sourcePageCount: Number.isInteger(data.page_count) ? data.page_count : state.pageCount,
         pageRange: pageRange.start === null ? null : { start: pageRange.start, end: pageRange.end },
         size: state.file.size, callbackConfigured: Boolean(data.callback_configured),
-        extractionOptions: extractionOptions(), auditTrail: [],
+        extractionOptions: extractionOptions(), auditTrail: [], webhookEnabled: data.webhook_enabled === true,
       };
       state.currentSubmission = record;
       $("#submissionStatus").textContent = safeText(record.statusText);
@@ -636,9 +744,13 @@
       toast("PDFLens accepted the request.");
       resetFile();
       $("#retrieveSubmitted").disabled = false;
-      $("#retrieveSubmitted").textContent = "Retrieve result";
+      $("#retrieveSubmitted").textContent = record.webhookEnabled ? "Check result now" : "Retrieve result";
       recordRequestAudit(record, "Submitted", "PDFLens accepted the request.");
       recordRequestAudit(record, record.statusText, "Status returned by PDFLens.");
+      if (record.webhookEnabled) {
+        recordRequestAudit(record, "Waiting for webhook", "The UI will request the ZIP once PDFLens reports completion.");
+        listenForPdfLensWebhook(record);
+      }
     } catch (error) {
       const message = error.message || "The request could not be completed.";
       $("#submitErrorMessage").textContent = message;
@@ -651,8 +763,11 @@
     }
   }
 
-  async function retrieveResult(record, trigger = null) {
+  async function retrieveResult(record, trigger = null, options = {}) {
     if (!record?.requestId || state.resultPolling) return;
+    // Only the app's receiver can replace polling. An external callback URL
+    // notifies another service, so this UI still needs its normal polling loop.
+    const singleAttempt = options.singleAttempt ?? Boolean(record.webhookEnabled);
     state.resultPolling = true;
     const originalLabel = trigger?.textContent;
     if (trigger) { trigger.disabled = true; trigger.textContent = "Requesting…"; }
@@ -664,10 +779,12 @@
     const started = Date.now();
     let attempt = 0;
     let receivedZip = false;
-    recordRequestAudit(record, "Retrieval started", "Manual result check started.");
+    recordRequestAudit(record, "Retrieval started", options.triggeredByWebhook ? "Requesting the ZIP once after the completion callback." : "Manual result check started.");
     pollError.classList.add("hidden");
     pollingCard.classList.remove("hidden");
-    pollingText.textContent = `Checking PDFLens every ${state.resultPollIntervalSeconds} seconds for up to ${Math.ceil(state.resultPollMaxWaitSeconds / 60)} minutes.`;
+    pollingText.textContent = singleAttempt
+      ? "Checking PDFLens once for the result ZIP."
+      : `Checking PDFLens every ${state.resultPollIntervalSeconds} seconds for up to ${Math.ceil(state.resultPollMaxWaitSeconds / 60)} minutes.`;
     pollingFootprint.textContent = `Request ID: ${record.requestId}`;
     const elapsedTimer = window.setInterval(() => {
       const elapsed = Math.floor((Date.now() - started) / 1000);
@@ -675,7 +792,7 @@
     }, 1000);
     toast("Checking whether PDFLens has finished processing…");
     try {
-      while ((Date.now() - started) / 1000 < state.resultPollMaxWaitSeconds) {
+      while (singleAttempt ? attempt === 0 : (Date.now() - started) / 1000 < state.resultPollMaxWaitSeconds) {
         attempt += 1;
         pollingText.textContent = `Checking PDFLens result (attempt ${attempt})…`;
         pollingFootprint.textContent = `Request ID: ${record.requestId}`;
@@ -702,9 +819,14 @@
           try { data = await response.json(); } catch { /* use generic queued status */ }
           const upstreamStatus = safeText(data.status || "processing");
           const elapsed = Math.floor((Date.now() - started) / 1000);
-          if (record === state.currentSubmission) $("#submissionStatus").textContent = upstreamStatus;
+          if (record === state.currentSubmission && !singleAttempt) $("#submissionStatus").textContent = upstreamStatus;
           recordRequestAudit(record, upstreamStatus, "PDFLens has not returned the result ZIP yet.", attempt);
           pollingText.textContent = `PDFLens status: ${upstreamStatus}. Checking again in ${state.resultPollIntervalSeconds} seconds.`;
+          if (singleAttempt) {
+            const pendingError = new Error(`PDFLens still reports ${upstreamStatus}. Wait for its next webhook update or select Check result now to try once again.`);
+            pendingError.resultPending = true;
+            throw pendingError;
+          }
           pollingFootprint.textContent = `Attempt ${attempt} · elapsed ${elapsed}s · request ${record.requestId}`;
           const sleepMs = Math.min(state.resultPollIntervalSeconds * 1000, Math.max(0, state.resultPollMaxWaitSeconds * 1000 - (Date.now() - started)));
           if (sleepMs > 0) await new Promise((resolve) => window.setTimeout(resolve, sleepMs));
@@ -730,6 +852,8 @@
         };
         state.currentZip = zip;
         state.currentPackage = packageRecord;
+        state.webhookSource?.close();
+        state.webhookSource = null;
         if (record === state.currentSubmission) $("#submissionStatus").textContent = "Completed";
         recordRequestAudit(record, "Completed", `Result ZIP retrieved after ${attempt} check${attempt === 1 ? "" : "s"}.`, attempt);
         resetPageComparison(packageRecord);
@@ -743,8 +867,8 @@
       if (!receivedZip) throw new Error(`PDFLens was still processing after ${state.resultPollMaxWaitSeconds} seconds. Keep request ID ${record.requestId} and retry result retrieval later.`);
     } catch (error) {
       const message = error.message || "Could not retrieve this result. Check availability and try again.";
-      if (record === state.currentSubmission) $("#submissionStatus").textContent = "Retrieval issue";
-      recordRequestAudit(record, "Retrieval issue", message, attempt || null);
+      if (record === state.currentSubmission && !error.resultPending) $("#submissionStatus").textContent = "Retrieval issue";
+      recordRequestAudit(record, error.resultPending ? "Result not ready" : "Retrieval issue", message, attempt || null);
       $("#resultPollingErrorText").textContent = message;
       $("#resultPollingErrorId").textContent = `Request ID: ${record.requestId}`;
       pollError.classList.remove("hidden");
@@ -756,10 +880,10 @@
       if (trigger) { trigger.disabled = false; trigger.textContent = originalLabel; }
       if (record === state.currentSubmission && !pollError.classList.contains("hidden")) {
         $("#retrieveSubmitted").disabled = false;
-        $("#retrieveSubmitted").textContent = "Retry result retrieval";
+        $("#retrieveSubmitted").textContent = record.webhookEnabled ? "Check result now" : "Retry result retrieval";
       } else if (record === state.currentSubmission) {
         $("#retrieveSubmitted").disabled = false;
-        $("#retrieveSubmitted").textContent = "Retrieve result";
+        $("#retrieveSubmitted").textContent = record.webhookEnabled ? "Check result now" : "Retrieve result";
       }
     }
   }
@@ -805,38 +929,23 @@
     $("#packageAssets").textContent = String(categories.filter((category) => ["Image asset", "Table snapshot"].includes(category)).length);
     const tbody = $("#packageRows");
     tbody.replaceChildren();
-    record.files.forEach((file) => {
-      const tr = document.createElement("tr");
-      const name = document.createElement("td");
-      name.className = "file-name-cell";
-      name.textContent = safeText(file.name);
-      const type = document.createElement("td");
-      type.className = "file-type";
-      type.textContent = safeText(file.type);
-      const size = document.createElement("td");
-      size.textContent = prettyBytes(file.size);
-      const category = document.createElement("td");
-      const badge = document.createElement("span");
-      badge.className = "category-badge";
-      badge.textContent = artifactCategory(file.name);
-      category.append(badge);
-      const actions = document.createElement("td");
-      actions.className = "package-file-actions";
-      if (canPreviewFile(file)) {
-        const preview = document.createElement("button");
-        preview.className = "button button-secondary package-action";
-        preview.textContent = "Preview";
-        preview.addEventListener("click", () => openFilePreview(file));
-        actions.append(preview);
+    const imageFiles = record.files.filter((file) => artifactCategory(file.name) === "Image asset");
+    const tableFiles = record.files.filter((file) => artifactCategory(file.name) === "Table snapshot");
+    const insertedGroups = new Set();
+    for (const file of record.files) {
+      const category = artifactCategory(file.name);
+      const group = category === "Image asset" ? "images" : category === "Table snapshot" ? "tables" : "";
+      if (group) {
+        if (!insertedGroups.has(group)) {
+          const groupFiles = group === "images" ? imageFiles : tableFiles;
+          tbody.append(createAssetFolderRow(group === "images" ? "Images" : "Tables", group, groupFiles));
+          groupFiles.forEach((groupFile) => tbody.append(createPackageFileRow(groupFile, group)));
+          insertedGroups.add(group);
+        }
+        continue;
       }
-      const download = document.createElement("button");
-      download.className = "button button-secondary package-action";
-      download.textContent = "Download";
-      download.addEventListener("click", () => downloadPackageFile(file));
-      actions.append(download);
-      tr.append(name, type, size, category, actions);
-      tbody.append(tr);
-    });
+      tbody.append(createPackageFileRow(file));
+    }
     $("#downloadAgain").onclick = () => {
       if (state.currentZip) downloadBlob(state.currentZip, record.packageName);
       else retrieveResult(record, $("#downloadAgain"));
