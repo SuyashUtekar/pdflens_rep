@@ -4,6 +4,7 @@ import asyncio
 import hmac
 import json
 import time
+from collections import OrderedDict
 from datetime import datetime, timezone
 from urllib.parse import parse_qs, quote, urljoin, urlsplit
 
@@ -14,7 +15,13 @@ from starlette.concurrency import run_in_threadpool
 
 from app.config import settings
 from app.integrations.file_manager import FileManagerError, upload_file
-from app.integrations.pdflens import PdfLensUpstreamError, health_check, retrieve_result, submit_pdf
+from app.integrations.pdflens import (
+    PdfLensUpstreamError,
+    health_check,
+    retrieve_result,
+    submit_pdf,
+    validate_result_zip,
+)
 from app.security.pdf import MAX_UPLOAD_BYTES, count_pdf_pages, safe_filename, validate_pdf
 from app.utils.log_utils import get_app_logger, info, warning
 
@@ -22,13 +29,19 @@ logger = get_app_logger()
 router = APIRouter(prefix="/ui-api", tags=["PDFLens UI gateway"])
 _webhook_events: dict[str, list[dict[str, object]]] = {}
 _webhook_subscribers: dict[str, set[asyncio.Queue[dict[str, object]]]] = {}
+_webhook_packages: OrderedDict[str, tuple[bytes, str, float]] = OrderedDict()
+_webhook_package_bytes = 0
 _webhook_event_id = 0
 _MAX_WEBHOOK_REQUESTS = 500
 _MAX_WEBHOOK_EVENTS_PER_REQUEST = 200
+_MAX_WEBHOOK_PACKAGE_CACHE_BYTES = min(settings.max_result_bytes, 512 * 1024 * 1024)
+_MAX_WEBHOOK_PACKAGES = 20
+_WEBHOOK_PACKAGE_TTL_SECONDS = 30 * 60
 _WEBHOOK_QUERY_PARAMETER = "token"
 _WEBHOOK_HEADER = "X-PDFLens-Webhook-Token"
 _REQUEST_ID_FIELDS = {"request_id", "requestid"}
 _STATUS_FIELDS = {"status", "state", "processing_status", "processingstatus"}
+_MESSAGE_FIELDS = {"message", "comment", "detail"}
 
 
 def _default_webhook_url() -> str:
@@ -88,7 +101,7 @@ def _callback_field(payload: object, names: set[str]) -> str:
     return ""
 
 
-def _publish_webhook_event(request_id: str, status: str) -> dict[str, object]:
+def _publish_webhook_event(request_id: str, status: str, message: str = "") -> dict[str, object]:
     global _webhook_event_id
     if request_id not in _webhook_events and len(_webhook_events) >= _MAX_WEBHOOK_REQUESTS:
         oldest_request_id = next(iter(_webhook_events))
@@ -99,6 +112,7 @@ def _publish_webhook_event(request_id: str, status: str) -> dict[str, object]:
         "event_id": _webhook_event_id,
         "request_id": request_id,
         "status": status,
+        "message": message,
         "received_at": datetime.now(timezone.utc).isoformat(),
     }
     events = _webhook_events.setdefault(request_id, [])
@@ -113,6 +127,65 @@ def _publish_webhook_event(request_id: str, status: str) -> dict[str, object]:
                 pass
         queue.put_nowait(event)
     return event
+
+
+async def _read_limited_body(request: Request, max_bytes: int) -> bytes:
+    chunks: list[bytes] = []
+    total = 0
+    async for chunk in request.stream():
+        total += len(chunk)
+        if total > max_bytes:
+            raise HTTPException(status_code=413, detail="Webhook payload exceeds the configured size limit.")
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
+def _expire_webhook_packages() -> None:
+    global _webhook_package_bytes
+    now = time.monotonic()
+    for request_id, (data, _filename, stored_at) in list(_webhook_packages.items()):
+        if now - stored_at > _WEBHOOK_PACKAGE_TTL_SECONDS:
+            _webhook_packages.pop(request_id, None)
+            _webhook_package_bytes -= len(data)
+
+
+def _store_webhook_package(request_id: str, data: bytes, filename: str) -> None:
+    global _webhook_package_bytes
+    if len(data) > _MAX_WEBHOOK_PACKAGE_CACHE_BYTES:
+        raise HTTPException(status_code=413, detail="Webhook ZIP exceeds the configured result ZIP size limit.")
+    _expire_webhook_packages()
+    previous = _webhook_packages.pop(request_id, None)
+    if previous:
+        _webhook_package_bytes -= len(previous[0])
+    while _webhook_packages and (
+        len(_webhook_packages) >= _MAX_WEBHOOK_PACKAGES
+        or _webhook_package_bytes + len(data) > _MAX_WEBHOOK_PACKAGE_CACHE_BYTES
+    ):
+        _old_request_id, (old_data, _old_filename, _stored_at) = _webhook_packages.popitem(last=False)
+        _webhook_package_bytes -= len(old_data)
+    _webhook_packages[request_id] = (data, filename, time.monotonic())
+    _webhook_package_bytes += len(data)
+
+
+def _take_webhook_package(request_id: str) -> tuple[bytes, str] | None:
+    global _webhook_package_bytes
+    _expire_webhook_packages()
+    cached = _webhook_packages.pop(request_id, None)
+    if not cached:
+        return None
+    data, filename, _stored_at = cached
+    _webhook_package_bytes -= len(data)
+    return data, filename
+
+
+def _safe_webhook_filename(disposition: str, request_id: str) -> str:
+    import re
+
+    match = re.search(r"filename\*?=(?:UTF-8''|\")?([^\";]+)", disposition, re.IGNORECASE)
+    candidate = match.group(1).strip().strip('"') if match else f"pdflens-{request_id[:12]}.zip"
+    candidate = candidate.replace("\\", "/").split("/")[-1]
+    candidate = re.sub(r"[^A-Za-z0-9._-]", "_", candidate)[:180]
+    return candidate if candidate.lower().endswith(".zip") else f"{candidate}.zip"
 
 
 class ResultRequest(BaseModel):
@@ -283,7 +356,7 @@ async def submit_job(
 async def receive_pdflens_webhook(
     request: Request,
 ) -> dict[str, object]:
-    """Accept a minimal PDFLens request_id/status callback and publish it to the UI."""
+    """Accept either PDFLens's status JSON or its completed ZIP callback."""
     if not settings.webhook_secret:
         raise HTTPException(status_code=503, detail="PDFLens webhook receiver is not configured.")
     supplied_token = request.query_params.get(_WEBHOOK_QUERY_PARAMETER, "")
@@ -296,20 +369,52 @@ async def receive_pdflens_webhook(
     if not hmac.compare_digest(supplied_token, settings.webhook_secret):
         warning(logger, "pdflens_webhook_rejected", reason="invalid_token")
         raise HTTPException(status_code=401, detail="Webhook authentication failed.")
-    raw_body = await request.body()
-    if len(raw_body) > 64 * 1024:
-        raise HTTPException(status_code=413, detail="Webhook payload is too large.")
-    try:
-        payload = json.loads(raw_body.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise HTTPException(status_code=400, detail="Webhook payload must be valid JSON.") from exc
-    request_id = _callback_field(payload, _REQUEST_ID_FIELDS)[:300]
-    status = _callback_field(payload, _STATUS_FIELDS)[:100]
-    if not request_id or not status:
-        raise HTTPException(status_code=422, detail="Webhook payload must contain request_id and status.")
-    event = _publish_webhook_event(request_id, status)
-    info(logger, "pdflens_webhook_received", request_id=request_id, upstream_status=status[:80], event_id=event["event_id"])
-    return {"received": True, "request_id": request_id}
+
+    content_type = request.headers.get("Content-Type", "").casefold()
+    is_zip_callback = "zip" in content_type or bool(request.headers.get("Content-Disposition"))
+    max_body_bytes = settings.max_result_bytes if is_zip_callback else 64 * 1024
+    raw_body = await _read_limited_body(request, max_body_bytes)
+    is_zip_callback = is_zip_callback or raw_body.startswith((b"PK\x03\x04", b"PK\x05\x06"))
+
+    if is_zip_callback:
+        request_id = (
+            request.headers.get("X-Request-Id")
+            or request.headers.get("Request-Id")
+            or request.headers.get("X-Request-ID")
+            or ""
+        ).strip()[:300]
+        status = (request.headers.get("X-Status") or "Success").strip()[:100]
+        message = (request.headers.get("X-Message") or "Completed ZIP received from PDFLens.").strip()[:500]
+        if not request_id:
+            raise HTTPException(status_code=422, detail="ZIP webhook must include the X-Request-Id header.")
+        try:
+            validate_result_zip(raw_body)
+        except PdfLensUpstreamError as exc:
+            raise HTTPException(status_code=400, detail="Webhook body is not a valid result ZIP.") from exc
+        filename = _safe_webhook_filename(request.headers.get("Content-Disposition", ""), request_id)
+        _store_webhook_package(request_id, raw_body, filename)
+    else:
+        try:
+            payload = json.loads(raw_body.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise HTTPException(status_code=400, detail="Webhook payload must be valid JSON or a result ZIP.") from exc
+        request_id = _callback_field(payload, _REQUEST_ID_FIELDS)[:300]
+        status = _callback_field(payload, _STATUS_FIELDS)[:100]
+        message = _callback_field(payload, _MESSAGE_FIELDS)[:500]
+        if not request_id or not status:
+            raise HTTPException(status_code=422, detail="Webhook JSON must contain request_id and status.")
+
+    event = _publish_webhook_event(request_id, status, message)
+    info(
+        logger,
+        "pdflens_webhook_received",
+        request_id=request_id,
+        upstream_status=status[:80],
+        zip_received=is_zip_callback,
+        zip_bytes=len(raw_body) if is_zip_callback else 0,
+        event_id=event["event_id"],
+    )
+    return {"received": True, "request_id": request_id, "zip_received": is_zip_callback}
 
 
 @router.get("/webhook-events/{request_id}")
@@ -358,6 +463,15 @@ async def stream_webhook_events(request_id: str) -> StreamingResponse:
 @router.post("/results")
 async def get_result(request: ResultRequest) -> Response:
     started = time.monotonic()
+    cached_package = _take_webhook_package(request.request_id.strip())
+    if cached_package:
+        data, filename = cached_package
+        info(logger, "pdflens_webhook_zip_retrieved", request_id=request.request_id, bytes=len(data))
+        return Response(
+            content=data,
+            media_type="application/zip",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
     info(logger, "pdflens_result_poll_started", request_id=request.request_id, attempt=request.attempt)
     try:
         data, filename, upstream_state = await run_in_threadpool(retrieve_result, request.request_id.strip())

@@ -244,7 +244,7 @@
       let event;
       try { event = JSON.parse(message.data); } catch { return; }
       const status = safeText(event.status || "Status update");
-      recordRequestAudit(record, status, "Status update received from the PDFLens webhook.");
+      recordRequestAudit(record, status, safeText(event.message) || "Status update received from the PDFLens webhook.");
       $("#submissionStatus").textContent = status;
       const kind = webhookStatusKind(status);
       if (kind === "failed") {
