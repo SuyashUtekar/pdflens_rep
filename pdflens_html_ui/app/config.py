@@ -71,14 +71,8 @@ class Settings:
     timeout_seconds: float = float(os.getenv("PDFLENS_API_TIMEOUT_SECONDS", "180"))
     result_poll_interval_seconds: float = float(os.getenv("PDFLENS_RESULT_POLL_INTERVAL_SECONDS", "5"))
     result_poll_max_wait_seconds: int = int(os.getenv("PDFLENS_RESULT_POLL_MAX_WAIT_SECONDS", "900"))
-    callback_url: str = os.getenv("PDFLENS_CALLBACK_URL", "").strip()
     webhook_public_base_url: str = os.getenv("PDFLENS_WEBHOOK_PUBLIC_BASE_URL", "").strip().rstrip("/")
     webhook_secret: str = os.getenv("PDFLENS_WEBHOOK_SECRET", "").strip()
-    webhook_token_query_parameter: str = os.getenv("PDFLENS_WEBHOOK_TOKEN_QUERY_PARAMETER", "token").strip() or "token"
-    webhook_token_header: str = os.getenv("PDFLENS_WEBHOOK_TOKEN_HEADER", "X-PDFLens-Webhook-Token").strip() or "X-PDFLens-Webhook-Token"
-    webhook_token_prefix: str = os.getenv("PDFLENS_WEBHOOK_TOKEN_PREFIX", "").strip()
-    webhook_request_id_fields: str = os.getenv("PDFLENS_WEBHOOK_REQUEST_ID_FIELDS", "request_id,requestId,Request_id,RequestId").strip()
-    webhook_status_fields: str = os.getenv("PDFLENS_WEBHOOK_STATUS_FIELDS", "status,state,processing_status,processingStatus").strip()
     max_result_bytes: int = int(os.getenv("PDFLENS_MAX_RESULT_ZIP_BYTES", str(500 * 1024 * 1024)))
 
     def __post_init__(self) -> None:

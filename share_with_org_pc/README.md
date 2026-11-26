@@ -18,7 +18,7 @@ This folder is a standalone copy of the PDFLens browser UI and the small FastAPI
 
 1. Copy this folder to the organization PC.
 2. Install `uv` and use a supported Python version (3.11 or newer).
-3. In this folder, copy `.env.example` to `.env` and enter the File Manager upload URL, download URL template, PDFLens API URLs, raw JWT in `PDFLENS_JWT_TOKEN`, and one `PDFLENS_CONFIG_ID`. The ID stays server-side and is not displayed in the UI. Do not include the `Bearer ` prefix in the token; the backend adds it. If File Manager uses a different token, set `FILE_MANAGER_JWT_TOKEN`. The Callback URL field can override the default. To receive status updates in this UI, leave it blank and configure `PDFLENS_WEBHOOK_PUBLIC_BASE_URL` plus `PDFLENS_WEBHOOK_SECRET`; PDFLens must be able to reach that base URL.
+3. In this folder, copy `.env.example` to `.env` and enter the File Manager upload URL, download URL template, PDFLens API URLs, raw JWT in `PDFLENS_JWT_TOKEN`, and one `PDFLENS_CONFIG_ID`. The ID stays server-side and is not displayed in the UI. Do not include the `Bearer ` prefix in the token; the backend adds it. If File Manager uses a different token, set `FILE_MANAGER_JWT_TOKEN`. To receive status updates in this UI, configure `PDFLENS_WEBHOOK_PUBLIC_BASE_URL` and `PDFLENS_WEBHOOK_SECRET`; PDFLens must be able to reach that base URL.
 4. Ensure that PDFLens can reach and use the generated File Manager download URL to fetch each uploaded PDF.
 5. Run:
 

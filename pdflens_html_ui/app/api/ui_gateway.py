@@ -25,6 +25,10 @@ _webhook_subscribers: dict[str, set[asyncio.Queue[dict[str, object]]]] = {}
 _webhook_event_id = 0
 _MAX_WEBHOOK_REQUESTS = 500
 _MAX_WEBHOOK_EVENTS_PER_REQUEST = 200
+_WEBHOOK_QUERY_PARAMETER = "token"
+_WEBHOOK_HEADER = "X-PDFLens-Webhook-Token"
+_REQUEST_ID_FIELDS = {"request_id", "requestid"}
+_STATUS_FIELDS = {"status", "state", "processing_status", "processingstatus"}
 
 
 def _default_webhook_url() -> str:
@@ -41,7 +45,7 @@ def _default_webhook_url() -> str:
         ):
             return ""
         endpoint = urljoin(f"{settings.webhook_public_base_url}/", "ui-api/webhook")
-        query_key = quote(settings.webhook_token_query_parameter, safe="")
+        query_key = quote(_WEBHOOK_QUERY_PARAMETER, safe="")
         return f"{endpoint}?{query_key}={quote(settings.webhook_secret, safe='')}"
     except ValueError:
         return ""
@@ -53,7 +57,7 @@ def _is_ui_webhook_url(value: str) -> bool:
     try:
         candidate = urlsplit(value)
         expected = urlsplit(_default_webhook_url())
-        candidate_token = parse_qs(candidate.query).get(settings.webhook_token_query_parameter, [""])[0]
+        candidate_token = parse_qs(candidate.query).get(_WEBHOOK_QUERY_PARAMETER, [""])[0]
         return bool(
             expected.hostname
             and candidate.scheme in {"http", "https"}
@@ -126,7 +130,7 @@ class ResultRequest(BaseModel):
 
 @router.get("/settings")
 def ui_settings() -> dict[str, object]:
-    callback_configured = bool(settings.callback_url or _default_webhook_url())
+    callback_configured = bool(_default_webhook_url())
     return {
         "configured": bool(settings.config_id),
         "file_manager_configured": bool(
@@ -134,11 +138,7 @@ def ui_settings() -> dict[str, object]:
         ),
         "callback_configured": callback_configured,
         "webhook_receiver_ready": bool(_default_webhook_url()),
-        "callback_uses_app_receiver_by_default": (
-            _is_ui_webhook_url(settings.callback_url)
-            if settings.callback_url
-            else bool(_default_webhook_url())
-        ),
+        "callback_uses_app_receiver_by_default": bool(_default_webhook_url()),
         "result_poll_interval_seconds": settings.result_poll_interval_seconds,
         "result_poll_max_wait_seconds": settings.result_poll_max_wait_seconds,
     }
@@ -181,7 +181,6 @@ async def submit_job(
     extract_footnotes: bool = Form(False),
     start_page: int | None = Form(None),
     end_page: int | None = Form(None),
-    callback_url: str = Form(""),
 ) -> dict[str, object]:
     if not settings.config_id:
         raise HTTPException(status_code=503, detail="PDFLENS_CONFIG_ID is not configured on the UI service.")
@@ -210,7 +209,7 @@ async def submit_job(
                 detail=f"End page cannot exceed this PDF's {page_count}-page limit.",
             )
 
-    selected_callback_url = callback_url.strip() or settings.callback_url or _default_webhook_url()
+    selected_callback_url = _default_webhook_url()
     if selected_callback_url:
         try:
             callback_parts = urlsplit(selected_callback_url)
@@ -287,11 +286,13 @@ async def receive_pdflens_webhook(
     """Accept a minimal PDFLens request_id/status callback and publish it to the UI."""
     if not settings.webhook_secret:
         raise HTTPException(status_code=503, detail="PDFLens webhook receiver is not configured.")
-    supplied_token = request.query_params.get(settings.webhook_token_query_parameter, "")
+    supplied_token = request.query_params.get(_WEBHOOK_QUERY_PARAMETER, "")
     if not supplied_token:
-        supplied_token = request.headers.get(settings.webhook_token_header, "")
-        if settings.webhook_token_prefix and supplied_token.startswith(settings.webhook_token_prefix):
-            supplied_token = supplied_token[len(settings.webhook_token_prefix):].strip()
+        supplied_token = request.headers.get(_WEBHOOK_HEADER, "")
+        if not supplied_token:
+            authorization = request.headers.get("Authorization", "")
+            if authorization.lower().startswith("bearer "):
+                supplied_token = authorization[7:].strip()
     if not hmac.compare_digest(supplied_token, settings.webhook_secret):
         warning(logger, "pdflens_webhook_rejected", reason="invalid_token")
         raise HTTPException(status_code=401, detail="Webhook authentication failed.")
@@ -302,18 +303,8 @@ async def receive_pdflens_webhook(
         payload = json.loads(raw_body.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise HTTPException(status_code=400, detail="Webhook payload must be valid JSON.") from exc
-    request_id_fields = {
-        field.strip().casefold().replace("-", "_")
-        for field in settings.webhook_request_id_fields.split(",")
-        if field.strip()
-    }
-    status_fields = {
-        field.strip().casefold().replace("-", "_")
-        for field in settings.webhook_status_fields.split(",")
-        if field.strip()
-    }
-    request_id = _callback_field(payload, request_id_fields)[:300]
-    status = _callback_field(payload, status_fields)[:100]
+    request_id = _callback_field(payload, _REQUEST_ID_FIELDS)[:300]
+    status = _callback_field(payload, _STATUS_FIELDS)[:100]
     if not request_id or not status:
         raise HTTPException(status_code=422, detail="Webhook payload must contain request_id and status.")
     event = _publish_webhook_event(request_id, status)

@@ -765,8 +765,7 @@
 
   async function retrieveResult(record, trigger = null, options = {}) {
     if (!record?.requestId || state.resultPolling) return;
-    // Only the app's receiver can replace polling. An external callback URL
-    // notifies another service, so this UI still needs its normal polling loop.
+    // Use one-shot retrieval only when this UI receives the callback itself.
     const singleAttempt = options.singleAttempt ?? Boolean(record.webhookEnabled);
     state.resultPolling = true;
     const originalLabel = trigger?.textContent;
